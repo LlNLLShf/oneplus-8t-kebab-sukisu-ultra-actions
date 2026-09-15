@@ -3,9 +3,6 @@ name: Build kebab SukiSU Ultra
 run-name: ${{ inputs.kernel_source == 'latest-lineage-23.2' && 'UNAPPROVED_LATEST LineageOS 23.2 build' || 'Build kebab SukiSU Ultra' }}
 
 on:
-  push:
-    branches:
-      - main
   workflow_call:
     inputs:
       enable_susfs:
@@ -838,8 +835,8 @@ jobs:
             scripts/config --file "$config" -e BRIDGE
             scripts/config --file "$config" -e BRIDGE_NETFILTER
             scripts/config --file "$config" -e MACVLAN
-            scripts/config --file "$config" -m TUN
-            scripts/config --file "$config" -m TAP
+            scripts/config --file "$config" -e TUN
+            scripts/config --file "$config" -e TAP
             scripts/config --file "$config" -e NETFILTER_XT_MARK
             scripts/config --file "$config" -e NETFILTER_XT_MATCH_COMMENT
 
