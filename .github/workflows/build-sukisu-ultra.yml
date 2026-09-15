@@ -796,6 +796,50 @@ jobs:
             done
           }
 
+          enable_droidspaces_configs() {
+            local config="$1"
+            echo "Enabling Droidspaces / LXC container dependencies..."
+            # Cgroups & Namespaces
+            scripts/config --file "$config" -e CGROUPS
+            scripts/config --file "$config" -e MEMCG
+            scripts/config --file "$config" -e MEMCG_SWAP
+            scripts/config --file "$config" -e MEMCG_SWAP_ENABLED
+            scripts/config --file "$config" -e CGROUP_SCHED
+            scripts/config --file "$config" -e FAIR_GROUP_SCHED
+            scripts/config --file "$config" -e RT_GROUP_SCHED
+            scripts/config --file "$config" -e CGROUP_FREEZER
+            scripts/config --file "$config" -e CGROUP_DEVICE
+            scripts/config --file "$config" -e CGROUP_CPUACCT
+            scripts/config --file "$config" -e CGROUP_PERF
+            scripts/config --file "$config" -e CGROUP_BPF
+            scripts/config --file "$config" -e CPUSETS
+
+            scripts/config --file "$config" -e NAMESPACES
+            scripts/config --file "$config" -e UTS_NS
+            scripts/config --file "$config" -e IPC_NS
+            scripts/config --file "$config" -e USER_NS
+            scripts/config --file "$config" -e PID_NS
+            scripts/config --file "$config" -e NET_NS
+
+            # Virtual Network & Networking
+            scripts/config --file "$config" -e NET_CORE
+            scripts/config --file "$config" -e VETH
+            scripts/config --file "$config" -e BRIDGE
+            scripts/config --file "$config" -e BRIDGE_NETFILTER
+            scripts/config --file "$config" -e MACVLAN
+            scripts/config --file "$config" -m TUN
+            scripts/config --file "$config" -m TAP
+            scripts/config --file "$config" -e NETFILTER_XT_MARK
+            scripts/config --file "$config" -e NETFILTER_XT_MATCH_COMMENT
+
+            # PTS & IPC
+            scripts/config --file "$config" -e DEVPTS_MULTIPLE_INSTANCES
+            scripts/config --file "$config" -e POSIX_MQUEUE
+            scripts/config --file "$config" -e SECCOMP
+            scripts/config --file "$config" -e SECCOMP_FILTER
+            scripts/config --file "$config" -e CHECKPOINT_RESTORE
+          }
+
           configure_tree() {
             local tree="$1"
             local out="$2"
@@ -807,6 +851,9 @@ jobs:
               "$KERNEL_DEFCONFIG"
             scripts/kconfig/merge_config.sh -m -O "$out" \
               "$out/.config" "arch/arm64/configs/$OPLUS_CONFIG"
+
+            # 注入 Droidspaces 配置项
+            enable_droidspaces_configs "$out/.config"
 
             scripts/config --file "$out/.config" -e KSU
             scripts/config --file "$out/.config" -d KPROBES
