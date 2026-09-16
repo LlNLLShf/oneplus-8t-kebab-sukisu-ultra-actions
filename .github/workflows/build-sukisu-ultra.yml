@@ -846,6 +846,10 @@ jobs:
             scripts/config --file "$config" -e SECCOMP
             scripts/config --file "$config" -e SECCOMP_FILTER
             scripts/config --file "$config" -e CHECKPOINT_RESTORE
+
+            # Devtmpfs (DroidSpace / LXC /dev)
+            scripts/config --file "$config" -e DEVTMPFS
+            scripts/config --file "$config" -e DEVTMPFS_MOUNT
           }
 
           configure_tree() {
