@@ -2,7 +2,7 @@ name: Notify kernel candidate result
 
 on:
   workflow_run:
-    workflows: [Kernel candidate, Build kebab SukiSU Ultra]
+    workflows: []
     types: [completed]
 
 permissions:
