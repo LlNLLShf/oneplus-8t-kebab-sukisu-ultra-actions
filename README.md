@@ -4,13 +4,14 @@
 
 
 > fork自Chinohana/oneplus-8t-kebab-sukisu-ultra-actions
-##主要改动
+
+## 主要改动
 添加了droidspaces、外置 USB 网卡、SDR 、外置 USB 蓝牙适配器所需的内核配置
 
-##常见问题
+## 常见问题
 如果在droidspaces内部使用systemd作为init，应确保systemd及其package family版本在257及以下，否则容器将无法启动，某些桌面环境也可能受影响。这是由于内核大版本过低导致的，无法修复。
 
-##构建方式
+## 构建方式
 在github action中运行build-sukisu-ultra工作流
 
 > [!CAUTION]
