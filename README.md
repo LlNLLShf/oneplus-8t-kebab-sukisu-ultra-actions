@@ -2,6 +2,10 @@
 
 [![Build](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/actions/workflows/build-sukisu-ultra.yml/badge.svg?branch=main)](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/actions/workflows/build-sukisu-ultra.yml)
 
+
+> fork自Chinohana/oneplus-8t-kebab-sukisu-ultra-actions
+
+
 这是一个为 OnePlus 8T（`kebab` / KB2000）制作的内核构建项目。它在固定的
 LineageOS 23.2 Linux 4.19 内核上集成了 SukiSU Ultra 和 SUSFS v2.2。
 
