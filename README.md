@@ -1,4 +1,4 @@
-# OnePlus 8T SukiSU Ultra + SUSFS v2.2
+# OnePlus 8T SukiSU Ultra + SUSFS v2.2 + droidspaces + 外置 USB 网卡、SDR 、外置 USB 蓝牙适配器支持
 
 [![Build](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/actions/workflows/build-sukisu-ultra.yml/badge.svg?branch=main)](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/actions/workflows/build-sukisu-ultra.yml)
 
