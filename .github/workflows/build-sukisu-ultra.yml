@@ -852,6 +852,73 @@ jobs:
             scripts/config --file "$config" -e DEVTMPFS_MOUNT
           }
 
+          enable_hardware_expansion_configs() {
+            local config="$1"
+            echo "Enabling External USB Network, SDR, and USB Bluetooth drivers..."
+
+            # ----------------------------------------------------
+            # 1. 基础 USB 与 USB Serial 驱动 (SDR & 串口设备必需)
+            # ----------------------------------------------------
+            scripts/config --file "$config" -e USB_SERIAL
+            scripts/config --file "$config" -e USB_SERIAL_GENERIC
+            scripts/config --file "$config" -e USB_SERIAL_CH341
+            scripts/config --file "$config" -e USB_SERIAL_CP210X
+            scripts/config --file "$config" -e USB_SERIAL_FTDI_SIO
+            scripts/config --file "$config" -e USB_SERIAL_PL2303
+
+            # ----------------------------------------------------
+            # 2. 外置 USB 网卡 (USB Ethernet & Wireless Drivers)
+            # ----------------------------------------------------
+            scripts/config --file "$config" -e NETDEVICES
+            scripts/config --file "$config" -e USB_NET_DRIVERS
+            scripts/config --file "$config" -e USB_USBNET
+            # 常见 USB 有线网卡芯片
+            scripts/config --file "$config" -e USB_NET_RTL8152
+            scripts/config --file "$config" -e USB_NET_AX88179_178A
+            scripts/config --file "$config" -e USB_NET_CDC_ETHER
+            scripts/config --file "$config" -e USB_NET_CDC_NCM
+            scripts/config --file "$config" -e USB_NET_RNDIS_HOST
+            scripts/config --file "$config" -e USB_NET_CDC_SUBSET
+            scripts/config --file "$config" -e USB_NET_ZAURUS
+            # 无线网卡协议栈架构支持
+            scripts/config --file "$config" -e CFG80211
+            scripts/config --file "$config" -e MAC80211
+
+            # ----------------------------------------------------
+            # 3. SDR 设备支持 (Software Defined Radio)
+            # ----------------------------------------------------
+            scripts/config --file "$config" -e MEDIA_SUPPORT
+            scripts/config --file "$config" -e MEDIA_CAMERA_SUPPORT
+            scripts/config --file "$config" -e MEDIA_ANALOG_TV_SUPPORT
+            scripts/config --file "$config" -e MEDIA_DIGITAL_TV_SUPPORT
+            scripts/config --file "$config" -e MEDIA_RADIO_SUPPORT
+            scripts/config --file "$config" -e MEDIA_SDR_SUPPORT
+            scripts/config --file "$config" -e MEDIA_RC_SUPPORT
+            # SDR 驱动程序
+            scripts/config --file "$config" -e USB_AIRSPY
+            scripts/config --file "$config" -e USB_HACKRF
+            scripts/config --file "$config" -e USB_MSI2500
+            scripts/config --file "$config" -e DVB_RTL2830
+            scripts/config --file "$config" -e DVB_RTL2832
+            scripts/config --file "$config" -e DVB_RTL2832_SDR
+
+            # ----------------------------------------------------
+            # 4. 外置 USB 蓝牙适配器 (USB Bluetooth)
+            # ----------------------------------------------------
+            scripts/config --file "$config" -e BT
+            scripts/config --file "$config" -e BT_RFCOMM
+            scripts/config --file "$config" -e BT_RFCOMM_TTY
+            scripts/config --file "$config" -e BT_BNEP
+            scripts/config --file "$config" -e BT_HIDP
+            scripts/config --file "$config" -e BT_HS
+            scripts/config --file "$config" -e BT_LE
+            # 核心：USB 蓝牙 HCI 驱动
+            scripts/config --file "$config" -e BT_HCIBTUSB
+            scripts/config --file "$config" -e BT_HCIBTUSB_BCM
+            scripts/config --file "$config" -e BT_HCIBTUSB_RTL
+            scripts/config --file "$config" -e BT_HCIUART
+          }
+
           configure_tree() {
             local tree="$1"
             local out="$2"
@@ -866,6 +933,8 @@ jobs:
 
             # 注入 Droidspaces 配置项
             enable_droidspaces_configs "$out/.config"
+            # 注入外置 USB 网卡/SDR/蓝牙配置项
+            enable_hardware_expansion_configs "$out/.config"
 
             scripts/config --file "$out/.config" -e KSU
             scripts/config --file "$out/.config" -d KPROBES
