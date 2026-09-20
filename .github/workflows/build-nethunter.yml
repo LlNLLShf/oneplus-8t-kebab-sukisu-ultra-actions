@@ -1,4 +1,4 @@
-name: Build kebab SukiSU Ultra
+name: Build nethunter
 
 run-name: ${{ inputs.kernel_source == 'latest-lineage-23.2' && 'UNAPPROVED_LATEST LineageOS 23.2 build' || 'Build kebab SukiSU Ultra' }}
 
