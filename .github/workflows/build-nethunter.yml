@@ -100,7 +100,7 @@ env:
   KERNEL_SOURCE_MODE: ${{ inputs.kernel_source || 'approved-pin' }}
   ENABLE_NETHUNTER: ${{ github.event_name == 'push' || inputs.enable_nethunter }}
   NETHUNTER_PATCH_RTL88XXAU: "patches/nethunter/add-rtl88xxau-5.6.4.2-drivers.patch"
-  NETHUNTER_PATCH_UB500: "patches/nethunter/add-ub500-to-btusb.patch"
+  #NETHUNTER_PATCH_UB500: "patches/nethunter/add-ub500-to-btusb.patch"
   NETHUNTER_PATCH_ATH9K_FIX: "patches/nethunter/fix-ath9k-naming-conflict.patch"
   NETHUNTER_PATCH_RTW88: "patches/nethunter/add-rtw88-drivers-4.19.patch"
   NETHUNTER_PATCH_WIFI_INJECT: "patches/nethunter/add-wifi-injection-4.19.patch"
@@ -613,7 +613,7 @@ jobs:
             echo "Applying NetHunter aggressive patches to kernel_experiment..."
             for patch_file in \
               "$GITHUB_WORKSPACE/$NETHUNTER_PATCH_RTL88XXAU" \
-              "$GITHUB_WORKSPACE/$NETHUNTER_PATCH_UB500" \
+              # "$GITHUB_WORKSPACE/$NETHUNTER_PATCH_UB500" \
               "$GITHUB_WORKSPACE/$NETHUNTER_PATCH_ATH9K_FIX" \
               "$GITHUB_WORKSPACE/$NETHUNTER_PATCH_RTW88" \
               "$GITHUB_WORKSPACE/$NETHUNTER_PATCH_WIFI_INJECT"; do
