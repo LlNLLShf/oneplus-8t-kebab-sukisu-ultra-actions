@@ -569,7 +569,7 @@ jobs:
             git -C kernel_experiment/KernelSU diff --check
           fi
 
-- name: Apply baseline and experimental patches exactly
+      - name: Apply baseline and experimental patches exactly
         shell: bash
         run: |
           set -euo pipefail
