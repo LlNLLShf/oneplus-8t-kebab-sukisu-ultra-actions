@@ -613,7 +613,6 @@ jobs:
             echo "Applying NetHunter aggressive patches to kernel_experiment..."
             for patch_file in \
               "$GITHUB_WORKSPACE/$NETHUNTER_PATCH_RTL88XXAU" \
-              # "$GITHUB_WORKSPACE/$NETHUNTER_PATCH_UB500" \
               "$GITHUB_WORKSPACE/$NETHUNTER_PATCH_ATH9K_FIX" \
               "$GITHUB_WORKSPACE/$NETHUNTER_PATCH_RTW88" \
               "$GITHUB_WORKSPACE/$NETHUNTER_PATCH_WIFI_INJECT"; do
