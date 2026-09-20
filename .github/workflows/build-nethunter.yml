@@ -619,8 +619,8 @@ jobs:
               "$GITHUB_WORKSPACE/$NETHUNTER_PATCH_WIFI_INJECT"; do
 
               if [ -f "$patch_file" ]; then
-                git -C kernel_experiment apply --check --whitespace=error-all "$patch_file"
-                git -C kernel_experiment apply --whitespace=error-all "$patch_file"
+                git -C kernel_experiment apply --check --whitespace=fix "$patch_file"
+                git -C kernel_experiment apply --whitespace=fix "$patch_file"
               else
                 echo "Warning: Patch file $patch_file not found, skipping."
               fi
