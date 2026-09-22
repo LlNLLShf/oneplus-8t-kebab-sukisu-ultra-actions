@@ -990,6 +990,15 @@ jobs:
             scripts/config --file "$config" -e BT_HCIBTUSB_BCM
             scripts/config --file "$config" -e BT_HCIBTUSB_RTL
             scripts/config --file "$config" -e BT_HCIUART
+
+            # 【新增】启用 USB 监控和原始套接字支持，用于 Wireshark 抓包
+            scripts/config --file "$config" -e DEBUG_FS
+            scripts/config --file "$config" -e USB_MON
+            scripts/config --file "$config" -e PACKET
+
+            # 为确保容器内网络抓包正常工作，建议同时启用以下网络配置
+            scripts/config --file "$config" -e NETFILTER
+            scripts/config --file "$config" -e NF_CONNTRACK
           }
 
           configure_tree() {
