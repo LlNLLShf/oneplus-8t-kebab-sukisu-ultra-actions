@@ -919,7 +919,12 @@ jobs:
             scripts/config --file "$config" -e SECCOMP
             scripts/config --file "$config" -e SECCOMP_FILTER
             scripts/config --file "$config" -e CHECKPOINT_RESTORE
-
+            
+            # SYSV IPC (System V 共享内存/信号量/消息队列)
+            scripts/config --file "$config" -e SYSVIPC
+            scripts/config --file "$config" -e SYSVIPC_SYSCTL
+            scripts/config --file "$config" -e SYSVIPC_COMPAT
+            
             # Devtmpfs (DroidSpace / LXC /dev)
             scripts/config --file "$config" -e DEVTMPFS
             scripts/config --file "$config" -e DEVTMPFS_MOUNT
