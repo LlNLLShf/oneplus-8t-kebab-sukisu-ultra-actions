@@ -569,6 +569,48 @@ jobs:
             git -C kernel_experiment/KernelSU diff --check
           fi
 
+
+      - name: Apply ACA mode patch (Host + External Charging)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ACA_PATCH="$GITHUB_WORKSPACE/patches/ACA_mode_support/0001-Add-ACA-mode-support-for-OnePlus-8T-Host-Charging.patch"
+          test -s "$ACA_PATCH"
+          sha256sum "$ACA_PATCH" | tee audit/aca-mode-patch.sha256
+
+          for tree in kernel_baseline kernel_experiment; do
+            # 干净检查：不允许任何空白错误或路径越界
+            git -C "$tree" apply --check --whitespace=error-all "$ACA_PATCH"
+            git -C "$tree" apply --whitespace=error-all "$ACA_PATCH"
+            git -C "$tree" diff --check
+
+            # 只允许改动下面这 3 个驱动文件
+            git -C "$tree" diff --name-only |
+              LC_ALL=C sort -u \
+              > "$RUNNER_TEMP/aca-files.$tree.actual"
+          done
+
+          cat > "$RUNNER_TEMP/aca-files.expected" <<'EOF'
+          drivers/power/oplus/charger_ic/oplus_mp2650.c
+          drivers/power/supply/qcom/smb5-lib.c
+          drivers/usb/dwc3/dwc3-msm.c
+          EOF
+
+          for tree in kernel_baseline kernel_experiment; do
+            diff -u "$RUNNER_TEMP/aca-files.expected" \
+              "$RUNNER_TEMP/aca-files.$tree.actual"
+          done
+          cp "$RUNNER_TEMP/aca-files.expected" audit/aca-files.expected
+
+          # 确认三个模块参数已就位
+          grep -Fq 'module_param(aca_mode, bool, 0644);' \
+            kernel_experiment/drivers/power/oplus/charger_ic/oplus_mp2650.c
+          grep -Fq 'module_param(aca_mode, bool, 0644);' \
+            kernel_experiment/drivers/power/supply/qcom/smb5-lib.c
+          grep -Fq 'module_param(aca_mode, bool, 0644);' \
+            kernel_experiment/drivers/usb/dwc3/dwc3-msm.c
+
       - name: Apply baseline and experimental patches exactly
         shell: bash
         run: |
