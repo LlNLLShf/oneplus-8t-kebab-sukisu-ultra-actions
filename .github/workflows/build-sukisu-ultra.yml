@@ -579,31 +579,37 @@ jobs:
           test -s "$ACA_PATCH"
           sha256sum "$ACA_PATCH" | tee audit/aca-mode-patch.sha256
 
-          for tree in kernel_baseline kernel_experiment; do
-            # 干净检查：不允许任何空白错误或路径越界
-            git -C "$tree" apply --check --whitespace=error-all "$ACA_PATCH"
-            git -C "$tree" apply --whitespace=error-all "$ACA_PATCH"
-            git -C "$tree" diff --check
-
-            # 只允许改动下面这 3 个驱动文件
-            git -C "$tree" diff --name-only |
-              LC_ALL=C sort -u \
-              > "$RUNNER_TEMP/aca-files.$tree.actual"
-          done
-
+          # 直接用补丁元数据来验证文件列表，不受工作树里其他改动影响
           cat > "$RUNNER_TEMP/aca-files.expected" <<'EOF'
           drivers/power/oplus/charger_ic/oplus_mp2650.c
           drivers/power/supply/qcom/smb5-lib.c
           drivers/usb/dwc3/dwc3-msm.c
           EOF
 
-          for tree in kernel_baseline kernel_experiment; do
-            diff -u "$RUNNER_TEMP/aca-files.expected" \
-              "$RUNNER_TEMP/aca-files.$tree.actual"
-          done
+          git apply --numstat "$ACA_PATCH" |
+            awk -F '\t' '{print $3}' |
+            LC_ALL=C sort -u \
+            > "$RUNNER_TEMP/aca-files.from-patch"
+
+          diff -u "$RUNNER_TEMP/aca-files.expected" \
+            "$RUNNER_TEMP/aca-files.from-patch"
+
+          if grep -Eq '(^/|(^|/)\.\.(/|$)|\\)' \
+            "$RUNNER_TEMP/aca-files.from-patch"; then
+            echo "::error::Unsafe path found in ACA patch."
+            exit 1
+          fi
+
           cp "$RUNNER_TEMP/aca-files.expected" audit/aca-files.expected
 
-          # 确认三个模块参数已就位
+          # 对两棵树应用补丁
+          for tree in kernel_baseline kernel_experiment; do
+            git -C "$tree" apply --check --whitespace=error-all "$ACA_PATCH"
+            git -C "$tree" apply --whitespace=error-all "$ACA_PATCH"
+            git -C "$tree" diff --check
+          done
+
+          # 确认三个模块参数在 experiment 树里已就位
           grep -Fq 'module_param(aca_mode, bool, 0644);' \
             kernel_experiment/drivers/power/oplus/charger_ic/oplus_mp2650.c
           grep -Fq 'module_param(aca_mode, bool, 0644);' \
