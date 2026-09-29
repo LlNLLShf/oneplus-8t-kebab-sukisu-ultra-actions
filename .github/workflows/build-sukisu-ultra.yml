@@ -575,47 +575,56 @@ jobs:
         run: |
           set -euo pipefail
 
-          ACA_PATCH="$GITHUB_WORKSPACE/patches/ACA_mode_support/0001-Add-ACA-mode-support-for-OnePlus-8T-Host-Charging.patch"
-          test -s "$ACA_PATCH"
-          sha256sum "$ACA_PATCH" | tee audit/aca-mode-patch.sha256
+          ACA_PATCHES=(
+            "$GITHUB_WORKSPACE/patches/ACA_mode_support/0001-Add-ACA-mode-support-for-OnePlus-8T-Host-Charging.patch"
+            "$GITHUB_WORKSPACE/patches/ACA_mode_support/0002-Add-ACA-mode-for-SMB5-fork.patch"
+          )
 
-          # 直接用补丁元数据来验证文件列表，不受工作树里其他改动影响
+          for p in "${ACA_PATCHES[@]}"; do
+            test -s "$p"
+            sha256sum "$p"
+          done
+          sha256sum "${ACA_PATCHES[@]}" | tee audit/aca-mode-patches.sha256
+
           cat > "$RUNNER_TEMP/aca-files.expected" <<'EOF'
+          drivers/power/oplus/charger_ic/oplus_battery_msm8250.c
           drivers/power/oplus/charger_ic/oplus_mp2650.c
           drivers/power/supply/qcom/smb5-lib.c
           drivers/usb/dwc3/dwc3-msm.c
           EOF
 
-          git apply --numstat "$ACA_PATCH" |
-            awk -F '\t' '{print $3}' |
-            LC_ALL=C sort -u \
-            > "$RUNNER_TEMP/aca-files.from-patch"
+          for p in "${ACA_PATCHES[@]}"; do
+            git apply --numstat "$p"
+          done | awk -F '\t' '{print $3}' | LC_ALL=C sort -u \
+            > "$RUNNER_TEMP/aca-files.from-patches"
 
           diff -u "$RUNNER_TEMP/aca-files.expected" \
-            "$RUNNER_TEMP/aca-files.from-patch"
+            "$RUNNER_TEMP/aca-files.from-patches"
 
           if grep -Eq '(^/|(^|/)\.\.(/|$)|\\)' \
-            "$RUNNER_TEMP/aca-files.from-patch"; then
+            "$RUNNER_TEMP/aca-files.from-patches"; then
             echo "::error::Unsafe path found in ACA patch."
             exit 1
           fi
 
           cp "$RUNNER_TEMP/aca-files.expected" audit/aca-files.expected
 
-          # 对两棵树应用补丁
           for tree in kernel_baseline kernel_experiment; do
-            git -C "$tree" apply --check --whitespace=error-all "$ACA_PATCH"
-            git -C "$tree" apply --whitespace=error-all "$ACA_PATCH"
+            for p in "${ACA_PATCHES[@]}"; do
+              git -C "$tree" apply --check --whitespace=error-all "$p"
+              git -C "$tree" apply --whitespace=error-all "$p"
+            done
             git -C "$tree" diff --check
           done
 
-          # 确认三个模块参数在 experiment 树里已就位
-          grep -Fq 'module_param(aca_mode, bool, 0644);' \
-            kernel_experiment/drivers/power/oplus/charger_ic/oplus_mp2650.c
-          grep -Fq 'module_param(aca_mode, bool, 0644);' \
-            kernel_experiment/drivers/power/supply/qcom/smb5-lib.c
-          grep -Fq 'module_param(aca_mode, bool, 0644);' \
-            kernel_experiment/drivers/usb/dwc3/dwc3-msm.c
+          for f in \
+            drivers/power/oplus/charger_ic/oplus_battery_msm8250.c \
+            drivers/power/oplus/charger_ic/oplus_mp2650.c \
+            drivers/power/supply/qcom/smb5-lib.c \
+            drivers/usb/dwc3/dwc3-msm.c; do
+            grep -Fq 'module_param(aca_mode, bool, 0644);' \
+              "kernel_experiment/$f"
+          done
 
       - name: Apply baseline and experimental patches exactly
         shell: bash
