@@ -1,0 +1,138 @@
+From e2469047afd94fc033add3e530c2ff04ee197c02 Mon Sep 17 00:00:00 2001
+From: GitHub Actions <actions@github.com>
+Date: Wed, 30 Sep 2026 00:26:25 +0800
+Subject: [PATCH] Add ACA mode support for OnePlus 8T (Host + Charging)
+
+---
+ drivers/power/oplus/charger_ic/oplus_mp2650.c | 16 ++++++++++
+ drivers/power/supply/qcom/smb5-lib.c          | 32 +++++++++++++++++++
+ drivers/usb/dwc3/dwc3-msm.c                   | 15 +++++++--
+ 3 files changed, 61 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/power/oplus/charger_ic/oplus_mp2650.c b/drivers/power/oplus/charger_ic/oplus_mp2650.c
+index 9447a11abda9..fd911fedcc6e 100644
+--- a/drivers/power/oplus/charger_ic/oplus_mp2650.c
++++ b/drivers/power/oplus/charger_ic/oplus_mp2650.c
+@@ -85,6 +85,11 @@ extern void mt_power_off(void);
+ #define TRACK_DEVICE_ABNORMAL_UPLOAD_PERIOD (24 * 3600)
+ #define TRACK_I2CERROR_SAMEADDR_MIN_INTERVAL 3
+ 
++// 1. 在文件开头（#include 之后）添加模块参数
++static bool aca_mode = false;
++module_param(aca_mode, bool, 0644);
++MODULE_PARM_DESC(aca_mode, "Enable ACA mode (Host + External Charging)");
++
+ struct chip_mp2650 *charger_ic = NULL;
+ int reg_access_allow = 0;
+ int mp2650_reg = 0;
+@@ -1718,6 +1723,17 @@ int mp2650_otg_enable(void)
+ 	}
+ 
+ 	chg_info("otg enable\n");
++
++	// 【新增逻辑】ACA模式且外部有VBUS时，跳过内部升压
++	if (aca_mode) {
++		int vbus_mv = mp2650_get_vbus_voltage();
++		if (vbus_mv > 4500) {
++			chg_info("ACA mode: External VBUS (%d mV) detected, skipping OTG boost\n", vbus_mv);
++			// 不拉高 mps_otg_en GPIO，直接返回成功
++			return 0;
++		}
++	}
++
+ 	rc = mp2650_burst_mode_enable(true);
+ 
+ 	mp2650_set_wdt_timer(REG09_MP2650_WTD_TIMER_DISABLE);
+diff --git a/drivers/power/supply/qcom/smb5-lib.c b/drivers/power/supply/qcom/smb5-lib.c
+index 086f2d9229e0..2c326bd203ec 100644
+--- a/drivers/power/supply/qcom/smb5-lib.c
++++ b/drivers/power/supply/qcom/smb5-lib.c
+@@ -40,6 +40,11 @@
+ 	|| typec_mode == POWER_SUPPLY_TYPEC_SOURCE_HIGH)	\
+ 	&& (!chg->typec_legacy || chg->typec_legacy_use_rp_icl))
+ 
++// 1. 在文件开头添加模块参数
++static bool aca_mode = false;
++module_param(aca_mode, bool, 0644);
++MODULE_PARM_DESC(aca_mode, "Enable ACA mode (Host + External Charging)");
++
+ static void update_sw_icl_max(struct smb_charger *chg, int pst);
+ static int smblib_get_prop_typec_mode(struct smb_charger *chg);
+ 
+@@ -346,6 +351,18 @@ static void smblib_notify_usb_host(struct smb_charger *chg, bool enable)
+ 	int rc = 0;
+ 
+ 	if (enable) {
++		// 【新增逻辑】ACA模式且外部有VBUS时，跳过PMIC升压
++		if (aca_mode) {
++			union power_supply_propval pval = {0, };
++			if (chg->usb_psy) {
++				power_supply_get_property(chg->usb_psy, POWER_SUPPLY_PROP_PRESENT, &pval);
++				if (pval.intval) {
++					smblib_dbg(chg, PR_OTG, "ACA mode: External VBUS present, skipping OTG boost\n");
++					goto notify_extcon; // 跳过 DCDC_CMD_OTG_REG 的写入
++				}
++			}
++		}
++
+ 		smblib_dbg(chg, PR_OTG, "enabling VBUS in OTG mode\n");
+ 		rc = smblib_masked_write(chg, DCDC_CMD_OTG_REG,
+ 					OTG_EN_BIT, OTG_EN_BIT);
+@@ -3289,6 +3306,21 @@ int smblib_get_prop_usb_online(struct smb_charger *chg,
+ 		return rc;
+ 	}
+ 
++	// 【新增逻辑】ACA模式下，如果处于OTG状态且有外部电源，强制报告在线（即允许充电）
++	if (aca_mode) {
++		if (chg->real_charger_type == POWER_SUPPLY_TYPE_USB_OTG ||
++			smblib_get_prop_typec_mode(chg) == POWER_SUPPLY_TYPEC_SINK_DEBUG_ACCESSORY) {
++			union power_supply_propval vbus_voltage = {0, };
++			if (chg->iio.usbin_v_chan) {
++				iio_read_channel_processed(chg->iio.usbin_v_chan, &vbus_voltage.intval);
++				if (vbus_voltage.intval > 4500000) {
++					val->intval = 1;
++					return 0;
++				}
++			}
++		}
++	}
++
+ 	rc = smblib_read(chg, POWER_PATH_STATUS_REG, &stat);
+ 	if (rc < 0) {
+ 		smblib_err(chg, "Couldn't read POWER_PATH_STATUS rc=%d\n",
+diff --git a/drivers/usb/dwc3/dwc3-msm.c b/drivers/usb/dwc3/dwc3-msm.c
+index 7ade39c10a21..e975e96063e4 100644
+--- a/drivers/usb/dwc3/dwc3-msm.c
++++ b/drivers/usb/dwc3/dwc3-msm.c
+@@ -51,6 +51,11 @@ static bool bc12_compliance;
+ module_param(bc12_compliance, bool, 0644);
+ MODULE_PARM_DESC(bc12_compliance, "Disable sending dp pulse for CDP");
+ 
++// 1. 在文件开头添加模块参数
++static bool aca_mode = false;
++module_param(aca_mode, bool, 0644);
++MODULE_PARM_DESC(aca_mode, "Enable ACA mode (Host + External Charging)");
++
+ #define SDP_CONNETION_CHECK_TIME 10000 /* in ms */
+ #define EXTCON_SYNC_EVENT_TIMEOUT_MS 1500 /* in ms */
+ 
+@@ -4362,8 +4367,14 @@ static int dwc3_otg_start_host(struct dwc3_msm *mdwc, int on)
+ 		}
+ 
+ 		usb_phy_notify_connect(mdwc->hs_phy, USB_SPEED_HIGH);
+-		if (!IS_ERR_OR_NULL(mdwc->vbus_reg))
+-			ret = regulator_enable(mdwc->vbus_reg);
++		// 【新增逻辑】如果是ACA模式且外部有VBUS，不要使能 vbus_reg
++		if (!IS_ERR_OR_NULL(mdwc->vbus_reg)) {
++			if (aca_mode && mdwc->vbus_active) {
++				dev_info(mdwc->dev, "ACA mode: External VBUS detected, skipping internal VBUS enable\n");
++			} else {
++				ret = regulator_enable(mdwc->vbus_reg);
++			}
++		}
+ 		if (ret) {
+ 			dev_err(mdwc->dev, "unable to enable vbus_reg\n");
+ 			mdwc->hs_phy->flags &= ~PHY_HOST_MODE;
+-- 
+2.54.0
+
