@@ -575,34 +575,26 @@ jobs:
         run: |
           set -euo pipefail
 
-          ACA_PATCHES=(
-            "$GITHUB_WORKSPACE/patches/ACA_mode_support/0001-Add-ACA-mode-support-for-OnePlus-8T-Host-Charging.patch"
-            "$GITHUB_WORKSPACE/patches/ACA_mode_support/0002-Add-ACA-mode-for-SMB5-fork.patch"
-          )
-
-          for p in "${ACA_PATCHES[@]}"; do
-            test -s "$p"
-            sha256sum "$p"
-          done
-          sha256sum "${ACA_PATCHES[@]}" | tee audit/aca-mode-patches.sha256
+          ACA_PATCH="$GITHUB_WORKSPACE/patches/ACA_mode_support/0001-Add-ACA-mode-support-for-OnePlus-8T.patch"
+          test -s "$ACA_PATCH"
+          sha256sum "$ACA_PATCH" | tee audit/aca-mode-patch.sha256
 
           cat > "$RUNNER_TEMP/aca-files.expected" <<'EOF'
           drivers/power/oplus/charger_ic/oplus_battery_msm8250.c
           drivers/power/oplus/charger_ic/oplus_mp2650.c
-          drivers/power/supply/qcom/smb5-lib.c
           drivers/usb/dwc3/dwc3-msm.c
           EOF
 
-          for p in "${ACA_PATCHES[@]}"; do
-            git apply --numstat "$p"
-          done | awk -F '\t' '{print $3}' | LC_ALL=C sort -u \
-            > "$RUNNER_TEMP/aca-files.from-patches"
+          git apply --numstat "$ACA_PATCH" |
+            awk -F '\t' '{print $3}' |
+            LC_ALL=C sort -u \
+            > "$RUNNER_TEMP/aca-files.from-patch"
 
           diff -u "$RUNNER_TEMP/aca-files.expected" \
-            "$RUNNER_TEMP/aca-files.from-patches"
+            "$RUNNER_TEMP/aca-files.from-patch"
 
           if grep -Eq '(^/|(^|/)\.\.(/|$)|\\)' \
-            "$RUNNER_TEMP/aca-files.from-patches"; then
+            "$RUNNER_TEMP/aca-files.from-patch"; then
             echo "::error::Unsafe path found in ACA patch."
             exit 1
           fi
@@ -610,17 +602,14 @@ jobs:
           cp "$RUNNER_TEMP/aca-files.expected" audit/aca-files.expected
 
           for tree in kernel_baseline kernel_experiment; do
-            for p in "${ACA_PATCHES[@]}"; do
-              git -C "$tree" apply --check --whitespace=error-all "$p"
-              git -C "$tree" apply --whitespace=error-all "$p"
-            done
+            git -C "$tree" apply --check --whitespace=error-all "$ACA_PATCH"
+            git -C "$tree" apply --whitespace=error-all "$ACA_PATCH"
             git -C "$tree" diff --check
           done
 
           for f in \
             drivers/power/oplus/charger_ic/oplus_battery_msm8250.c \
             drivers/power/oplus/charger_ic/oplus_mp2650.c \
-            drivers/power/supply/qcom/smb5-lib.c \
             drivers/usb/dwc3/dwc3-msm.c; do
             grep -Fq 'module_param(aca_mode, bool, 0644);' \
               "kernel_experiment/$f"
