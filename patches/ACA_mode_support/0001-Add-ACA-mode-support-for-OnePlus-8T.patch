@@ -1,16 +1,16 @@
-From e39e3bd579511f6177819f4ac1c13e8b07e202c5 Mon Sep 17 00:00:00 2001
+From 0eebd87e6cfc34e93c752da602ff11f179518f38 Mon Sep 17 00:00:00 2001
 From: GitHub Actions <actions@github.com>
 Date: Thu, 1 Oct 2026 11:49:00 +0800
 Subject: [PATCH] Add ACA mode support for OnePlus 8T
 
 ---
- .../oplus/charger_ic/oplus_battery_msm8250.c  | 57 ++++++++++++++++---
- drivers/power/oplus/charger_ic/oplus_mp2650.c | 11 ++++
- drivers/usb/dwc3/dwc3-msm.c                   | 13 ++++-
- 3 files changed, 71 insertions(+), 10 deletions(-)
+ .../oplus/charger_ic/oplus_battery_msm8250.c  | 78 +++++++++++++++++--
+ drivers/power/oplus/charger_ic/oplus_mp2650.c | 11 +++
+ drivers/usb/dwc3/dwc3-msm.c                   | 13 +++-
+ 3 files changed, 92 insertions(+), 10 deletions(-)
 
 diff --git a/drivers/power/oplus/charger_ic/oplus_battery_msm8250.c b/drivers/power/oplus/charger_ic/oplus_battery_msm8250.c
-index f197cc395d08..aad05a0e2df1 100644
+index f197cc395d08..01bddf6e384c 100644
 --- a/drivers/power/oplus/charger_ic/oplus_battery_msm8250.c
 +++ b/drivers/power/oplus/charger_ic/oplus_battery_msm8250.c
 @@ -338,6 +338,10 @@ static struct smb_params smb5_pm8150b_params = {
@@ -58,16 +58,21 @@ index f197cc395d08..aad05a0e2df1 100644
  	smblib_dbg(chg, PR_OTG, "enabling OTG\n");
  	oplus_wake_up_usbtemp_thread();
  
-@@ -4279,6 +4294,17 @@ int smblib_get_prop_usb_online(struct smb_charger *chg, union power_supply_propv
+@@ -4279,6 +4294,22 @@ int smblib_get_prop_usb_online(struct smb_charger *chg, union power_supply_propv
  	}
  #endif /*OPLUS_FEATURE_CHG_BASIC*/
  
-+	/* ACA mode: 外部 VBUS > 4.5V 就报告在线，允许从 VBUS 充电 */
++	/* ACA mode: 外部 VBUS > 4.0V 就报告在线，允许从 VBUS 充电 */
 +	if (aca_mode && chg->iio.mid_chan) {
 +		union power_supply_propval vb = {0, };
 +		iio_read_channel_processed(chg->iio.mid_chan, &vb.intval);
-+		if (vb.intval > 4500000) {
-+			chg_err("ACA mode: ext VBUS %d uV, report online\n", vb.intval);
++		if (vb.intval > 4000000) {
++			if (chg->real_charger_type != POWER_SUPPLY_TYPE_USB_DCP) {
++				chg->real_charger_type = POWER_SUPPLY_TYPE_USB_DCP;
++				smblib_err(chg, "ACA: force real_charger_type to DCP\n");
++			}
++			smblib_set_usb_suspend(chg, false);
++			vote(chg->usb_icl_votable, DCP_VOTER, true, 500000);
 +			val->intval = 1;
 +			return 0;
 +		}
@@ -76,7 +81,30 @@ index f197cc395d08..aad05a0e2df1 100644
  	if (get_client_vote_locked(chg->usb_icl_votable, USER_VOTER) == 0) {
  		val->intval = false;
  #ifdef OPLUS_FEATURE_CHG_BASIC
-@@ -15412,15 +15438,30 @@ bool oplus_chg_is_usb_present(void)
+@@ -4311,6 +4342,22 @@ int smblib_get_usb_online(struct smb_charger *chg, union power_supply_propval *v
+ 	if (!val->intval)
+ 		goto exit;
+ 
++	/* ACA mode: Host + 外部 VBUS > 4.0V，强制报告在线并激活充电 */
++	if (aca_mode && chg->iio.mid_chan) {
++		union power_supply_propval vb = {0, };
++		iio_read_channel_processed(chg->iio.mid_chan, &vb.intval);
++		if (vb.intval > 4000000) {
++			if (chg->real_charger_type != POWER_SUPPLY_TYPE_USB_DCP) {
++				chg->real_charger_type = POWER_SUPPLY_TYPE_USB_DCP;
++				smblib_err(chg, "ACA: force real_charger_type to DCP\n");
++			}
++			smblib_set_usb_suspend(chg, false);
++			vote(chg->usb_icl_votable, DCP_VOTER, true, 500000);
++			val->intval = 1;
++			return rc;
++		}
++	}
++
+ 	if (((chg->typec_mode == POWER_SUPPLY_TYPEC_SOURCE_DEFAULT) ||
+ 	     (chg->typec_mode == POWER_SUPPLY_TYPEC_SOURCE_MEDIUM) ||
+ 	     (chg->typec_mode == POWER_SUPPLY_TYPEC_SOURCE_HIGH) ||
+@@ -15412,15 +15459,30 @@ bool oplus_chg_is_usb_present(void)
  	if (!chip)
  		return false;
  
@@ -89,7 +117,7 @@ index f197cc395d08..aad05a0e2df1 100644
 +			chg_aca->iio.mid_chan) {
 +			union power_supply_propval vb = {0, };
 +			iio_read_channel_processed(chg_aca->iio.mid_chan, &vb.intval);
-+			if (vb.intval > 4500000) {
++			if (vb.intval > 4000000) {
 +				chg_err("ACA mode: host + ext VBUS (%d uV), report present\n", vb.intval);
 +				return true;
 +			}
