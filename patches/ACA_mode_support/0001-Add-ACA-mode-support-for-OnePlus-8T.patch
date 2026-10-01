@@ -1,16 +1,16 @@
-From 0eebd87e6cfc34e93c752da602ff11f179518f38 Mon Sep 17 00:00:00 2001
+From 74632a5cc4a9ef533b886be0e365c91f4953f4a2 Mon Sep 17 00:00:00 2001
 From: GitHub Actions <actions@github.com>
 Date: Thu, 1 Oct 2026 11:49:00 +0800
 Subject: [PATCH] Add ACA mode support for OnePlus 8T
 
 ---
- .../oplus/charger_ic/oplus_battery_msm8250.c  | 78 +++++++++++++++++--
- drivers/power/oplus/charger_ic/oplus_mp2650.c | 11 +++
- drivers/usb/dwc3/dwc3-msm.c                   | 13 +++-
- 3 files changed, 92 insertions(+), 10 deletions(-)
+ .../oplus/charger_ic/oplus_battery_msm8250.c  | 133 +++++++++++++++---
+ drivers/power/oplus/charger_ic/oplus_mp2650.c |  11 ++
+ drivers/usb/dwc3/dwc3-msm.c                   |  19 ++-
+ 3 files changed, 145 insertions(+), 18 deletions(-)
 
 diff --git a/drivers/power/oplus/charger_ic/oplus_battery_msm8250.c b/drivers/power/oplus/charger_ic/oplus_battery_msm8250.c
-index f197cc395d08..01bddf6e384c 100644
+index f197cc395d08..1675b68ea68f 100644
 --- a/drivers/power/oplus/charger_ic/oplus_battery_msm8250.c
 +++ b/drivers/power/oplus/charger_ic/oplus_battery_msm8250.c
 @@ -338,6 +338,10 @@ static struct smb_params smb5_pm8150b_params = {
@@ -24,7 +24,32 @@ index f197cc395d08..01bddf6e384c 100644
  #else
  static int __debug_mask;
  #endif
-@@ -1187,6 +1191,12 @@ static void smblib_notify_usb_host(struct smb_charger *chg, bool enable)
+@@ -560,12 +564,21 @@ irqreturn_t oplus_wired_conn_change_handler(int irq, void *data)
+ {
+ 	struct oplus_chg_chip *chip = data;
+ 	struct smb_charger *chg = &chip->pmic_spmi.smb5_chip->chg;
+-	//struct oplus_chg_chip *chip = g_oplus_chip;
++
++	/* ACA mode: 外部 VBUS 存在时忽略 wired_conn 变化 */
++	if (aca_mode && chg->iio.mid_chan) {
++		union power_supply_propval vb = {0, };
++		iio_read_channel_processed(chg->iio.mid_chan, &vb.intval);
++		if (vb.intval > 4000000) {
++			chg_err("ACA mode: ignore wired_conn change (VBUS %d uV)\n", vb.intval);
++			return IRQ_HANDLED;
++		}
++	}
+ 
+ 	if ((chg->typec_mode == POWER_SUPPLY_TYPEC_SINK || chg->typec_mode == POWER_SUPPLY_TYPEC_SINK_POWERED_CABLE) &&
+-	    chip->vbatt_num == 2) {
++		chip->vbatt_num == 2) {
+ 		pr_info("%s:chg->typec_mode = sink return!\n", __func__);
+-		return IRQ_HANDLED;
++	return IRQ_HANDLED;
+ 	}
+ 
+ 	cancel_delayed_work_sync(&chg->wired_in_work);
+@@ -1187,6 +1200,12 @@ static void smblib_notify_usb_host(struct smb_charger *chg, bool enable)
  	int rc = 0;
  
  	if (enable) {
@@ -37,7 +62,7 @@ index f197cc395d08..01bddf6e384c 100644
  		smblib_dbg(chg, PR_OTG, "enabling VBUS in OTG mode\n");
  		rc = smblib_masked_write(chg, DCDC_CMD_OTG_REG, OTG_EN_BIT, OTG_EN_BIT);
  		if (rc < 0) {
-@@ -1194,6 +1204,7 @@ static void smblib_notify_usb_host(struct smb_charger *chg, bool enable)
+@@ -1194,6 +1213,7 @@ static void smblib_notify_usb_host(struct smb_charger *chg, bool enable)
  			return;
  		}
  
@@ -45,7 +70,7 @@ index f197cc395d08..01bddf6e384c 100644
  		smblib_notify_extcon_props(chg, EXTCON_USB_HOST);
  	} else {
  		smblib_dbg(chg, PR_OTG, "disabling VBUS in OTG mode\n");
-@@ -2957,7 +2968,11 @@ int smblib_vbus_regulator_enable(struct regulator_dev *rdev)
+@@ -2957,7 +2977,11 @@ int smblib_vbus_regulator_enable(struct regulator_dev *rdev)
  	struct oplus_chg_chip *chip = g_oplus_chip;
  	int count = 20;
  #endif /*OPLUS_FEATURE_CHG_BASIC*/
@@ -58,7 +83,7 @@ index f197cc395d08..01bddf6e384c 100644
  	smblib_dbg(chg, PR_OTG, "enabling OTG\n");
  	oplus_wake_up_usbtemp_thread();
  
-@@ -4279,6 +4294,22 @@ int smblib_get_prop_usb_online(struct smb_charger *chg, union power_supply_propv
+@@ -4279,6 +4303,22 @@ int smblib_get_prop_usb_online(struct smb_charger *chg, union power_supply_propv
  	}
  #endif /*OPLUS_FEATURE_CHG_BASIC*/
  
@@ -81,7 +106,7 @@ index f197cc395d08..01bddf6e384c 100644
  	if (get_client_vote_locked(chg->usb_icl_votable, USER_VOTER) == 0) {
  		val->intval = false;
  #ifdef OPLUS_FEATURE_CHG_BASIC
-@@ -4311,6 +4342,22 @@ int smblib_get_usb_online(struct smb_charger *chg, union power_supply_propval *v
+@@ -4311,6 +4351,22 @@ int smblib_get_usb_online(struct smb_charger *chg, union power_supply_propval *v
  	if (!val->intval)
  		goto exit;
  
@@ -104,7 +129,76 @@ index f197cc395d08..01bddf6e384c 100644
  	if (((chg->typec_mode == POWER_SUPPLY_TYPEC_SOURCE_DEFAULT) ||
  	     (chg->typec_mode == POWER_SUPPLY_TYPEC_SOURCE_MEDIUM) ||
  	     (chg->typec_mode == POWER_SUPPLY_TYPEC_SOURCE_HIGH) ||
-@@ -15412,15 +15459,30 @@ bool oplus_chg_is_usb_present(void)
+@@ -7493,16 +7549,26 @@ irqreturn_t typec_state_change_irq_handler(int irq, void *data)
+ 	struct smb_irq_data *irq_data = data;
+ 	struct smb_charger *chg = irq_data->parent_data;
+ 	int typec_mode;
+-#ifdef OPLUS_CUSTOM_OP_DEF
++	#ifdef OPLUS_CUSTOM_OP_DEF
+ 	int rc;
+ 	int wireless_present = 0;
+ 	union power_supply_propval pval;
+-#endif
+-#ifdef OPLUS_FEATURE_CHG_BASIC
++	#endif
++	#ifdef OPLUS_FEATURE_CHG_BASIC
+ 	bool current_status = 0;
+ 	static bool dfp_status = 0;
+ 	struct oplus_chg_chip *chip = g_oplus_chip;
+-#endif
++	#endif
++
++	/* ACA mode: 外部 VBUS 存在时忽略 CC 状态变化，防止 USB 总线被重建 */
++	if (aca_mode && chg->iio.mid_chan) {
++		union power_supply_propval vb = {0, };
++		iio_read_channel_processed(chg->iio.mid_chan, &vb.intval);
++		if (vb.intval > 4000000) {
++			chg_err("ACA mode: ignore typec state change (VBUS %d uV)\n", vb.intval);
++			return IRQ_HANDLED;
++		}
++	}
+ 
+ 	if (chg->connector_type == POWER_SUPPLY_CONNECTOR_MICRO_USB) {
+ 		smblib_dbg(chg, PR_INTERRUPT, "Ignoring for micro USB\n");
+@@ -7606,6 +7672,16 @@ irqreturn_t typec_attach_detach_irq_handler(int irq, void *data)
+ 	bool attached = false;
+ 	int rc;
+ 
++	/* ACA mode: 外部 VBUS 存在时忽略 attach/detach，保护 USB 总线 */
++	if (aca_mode && chg->iio.mid_chan) {
++		union power_supply_propval vb = {0, };
++		iio_read_channel_processed(chg->iio.mid_chan, &vb.intval);
++		if (vb.intval > 4000000) {
++			chg_err("ACA mode: ignore attach/detach (VBUS %d uV)\n", vb.intval);
++			return IRQ_HANDLED;
++		}
++	}
++
+ 	smblib_dbg(chg, PR_INTERRUPT, "IRQ: %s\n", irq_data->name);
+ 
+ 	rc = smblib_read(chg, TYPE_C_STATE_MACHINE_STATUS_REG, &stat);
+@@ -10432,9 +10508,19 @@ irqreturn_t oplus_ccdetect_change_handler(int irq, void *data)
+ 	struct oplus_chg_chip *chip = data;
+ 	struct smb_charger *chg = &chip->pmic_spmi.smb5_chip->chg;
+ 
++	/* ACA mode: 外部 VBUS 存在时忽略 ccdetect 变化，避免 Type-C 状态机
++	 * 重新走角色切换导致 USB 总线 reset、U 盘/键鼠断连 */
++	if (aca_mode && chg->iio.mid_chan) {
++		union power_supply_propval vb = {0, };
++		iio_read_channel_processed(chg->iio.mid_chan, &vb.intval);
++		if (vb.intval > 4000000) {
++			chg_err("ACA mode: ignore ccdetect change (VBUS %d uV)\n", vb.intval);
++			return IRQ_HANDLED;
++		}
++	}
++
+ 	cancel_delayed_work_sync(&chg->ccdetect_work);
+ 	vote(chg->awake_votable, CCDETECT_VOTER, true, 0);
+-	//smblib_dbg(chg, PR_INTERRUPT, "Scheduling ccdetect work\n");
+ 	printk(KERN_ERR "[OPLUS_CHG][%s]: Scheduling ccdetect work!\n", __func__);
+ 	schedule_delayed_work(&chg->ccdetect_work, msecs_to_jiffies(CCDETECT_DELAY_MS));
+ 	return IRQ_HANDLED;
+@@ -15412,15 +15498,30 @@ bool oplus_chg_is_usb_present(void)
  	if (!chip)
  		return false;
  
@@ -172,7 +266,7 @@ index 9447a11abda9..59ee29ae59e9 100644
  
  	mp2650_set_wdt_timer(REG09_MP2650_WTD_TIMER_DISABLE);
 diff --git a/drivers/usb/dwc3/dwc3-msm.c b/drivers/usb/dwc3/dwc3-msm.c
-index 7ade39c10a21..8a081b361923 100644
+index 7ade39c10a21..8d12bfbbe5d8 100644
 --- a/drivers/usb/dwc3/dwc3-msm.c
 +++ b/drivers/usb/dwc3/dwc3-msm.c
 @@ -51,6 +51,10 @@ static bool bc12_compliance;
@@ -186,7 +280,20 @@ index 7ade39c10a21..8a081b361923 100644
  #define SDP_CONNETION_CHECK_TIME 10000 /* in ms */
  #define EXTCON_SYNC_EVENT_TIMEOUT_MS 1500 /* in ms */
  
-@@ -4362,8 +4366,13 @@ static int dwc3_otg_start_host(struct dwc3_msm *mdwc, int on)
+@@ -3317,6 +3321,12 @@ static int dwc3_msm_id_notifier(struct notifier_block *nb,
+ 	if (!edev || !mdwc)
+ 		return NOTIFY_DONE;
+ 
++	/* ACA mode: 已在 Host 模式时忽略 ID 状态变化，保持 U 盘连接不中断 */
++	if (aca_mode && mdwc->in_host_mode) {
++		dev_info(mdwc->dev, "ACA mode: ignore ID notifier in host mode\n");
++		return NOTIFY_DONE;
++	}
++
+ 	if (!mdwc->usb_data_enabled)
+ 		return NOTIFY_DONE;
+ 
+@@ -4362,8 +4372,13 @@ static int dwc3_otg_start_host(struct dwc3_msm *mdwc, int on)
  		}
  
  		usb_phy_notify_connect(mdwc->hs_phy, USB_SPEED_HIGH);
