@@ -1004,20 +1004,8 @@ jobs:
             scripts/config --file "$config" -e USB_NET_RNDIS_HOST
             scripts/config --file "$config" -e USB_NET_CDC_SUBSET
             scripts/config --file "$config" -e USB_NET_ZAURUS
-            # 无线网卡协议栈架构支持
-            scripts/config --file "$config" -e CFG80211
-            scripts/config --file "$config" -e MAC80211
 
-            # ----------------------------------------------------
-            # 3. SDR 设备支持 (Software Defined Radio)
-            # ----------------------------------------------------
-            scripts/config --file "$config" -e MEDIA_SUPPORT
-            scripts/config --file "$config" -e MEDIA_CAMERA_SUPPORT
-            scripts/config --file "$config" -e MEDIA_ANALOG_TV_SUPPORT
-            scripts/config --file "$config" -e MEDIA_DIGITAL_TV_SUPPORT
-            scripts/config --file "$config" -e MEDIA_RADIO_SUPPORT
-            scripts/config --file "$config" -e MEDIA_SDR_SUPPORT
-            scripts/config --file "$config" -e MEDIA_RC_SUPPORT
+
             # SDR 驱动程序
             scripts/config --file "$config" -e USB_AIRSPY
             scripts/config --file "$config" -e USB_HACKRF
