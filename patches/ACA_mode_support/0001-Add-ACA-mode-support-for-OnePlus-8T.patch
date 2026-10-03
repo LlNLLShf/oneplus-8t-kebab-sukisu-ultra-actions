@@ -120,7 +120,7 @@ index f197cc395d08..1675b68ea68f 100644
 +				smblib_err(chg, "ACA: force real_charger_type to DCP\n");
 +			}
 +			smblib_set_usb_suspend(chg, false);
-+			vote(chg->usb_icl_votable, DCP_VOTER, true, 500000);
++			vote(chg->usb_icl_votable, DCP_VOTER, true, 2000000);
 +			val->intval = 1;
 +			return rc;
 +		}
