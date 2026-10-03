@@ -1,16 +1,16 @@
-From 74632a5cc4a9ef533b886be0e365c91f4953f4a2 Mon Sep 17 00:00:00 2001
+From 4728caf1dc99aba49e059445a78592ef28155660 Mon Sep 17 00:00:00 2001
 From: GitHub Actions <actions@github.com>
-Date: Thu, 1 Oct 2026 11:49:00 +0800
+Date: Sat, 3 Oct 2026 22:33:52 +0800
 Subject: [PATCH] Add ACA mode support for OnePlus 8T
 
 ---
- .../oplus/charger_ic/oplus_battery_msm8250.c  | 133 +++++++++++++++---
+ .../oplus/charger_ic/oplus_battery_msm8250.c  | 148 ++++++++++++++++--
  drivers/power/oplus/charger_ic/oplus_mp2650.c |  11 ++
  drivers/usb/dwc3/dwc3-msm.c                   |  19 ++-
- 3 files changed, 145 insertions(+), 18 deletions(-)
+ 3 files changed, 160 insertions(+), 18 deletions(-)
 
 diff --git a/drivers/power/oplus/charger_ic/oplus_battery_msm8250.c b/drivers/power/oplus/charger_ic/oplus_battery_msm8250.c
-index f197cc395d08..1675b68ea68f 100644
+index f197cc395d08..5ba505ac9e48 100644
 --- a/drivers/power/oplus/charger_ic/oplus_battery_msm8250.c
 +++ b/drivers/power/oplus/charger_ic/oplus_battery_msm8250.c
 @@ -338,6 +338,10 @@ static struct smb_params smb5_pm8150b_params = {
@@ -97,7 +97,7 @@ index f197cc395d08..1675b68ea68f 100644
 +				smblib_err(chg, "ACA: force real_charger_type to DCP\n");
 +			}
 +			smblib_set_usb_suspend(chg, false);
-+			vote(chg->usb_icl_votable, DCP_VOTER, true, 2000000);
++			vote(chg->usb_icl_votable, DCP_VOTER, true, 800000);
 +			val->intval = 1;
 +			return 0;
 +		}
@@ -120,7 +120,7 @@ index f197cc395d08..1675b68ea68f 100644
 +				smblib_err(chg, "ACA: force real_charger_type to DCP\n");
 +			}
 +			smblib_set_usb_suspend(chg, false);
-+			vote(chg->usb_icl_votable, DCP_VOTER, true, 2000000);
++			vote(chg->usb_icl_votable, DCP_VOTER, true, 800000);
 +			val->intval = 1;
 +			return rc;
 +		}
@@ -198,7 +198,7 @@ index f197cc395d08..1675b68ea68f 100644
  	printk(KERN_ERR "[OPLUS_CHG][%s]: Scheduling ccdetect work!\n", __func__);
  	schedule_delayed_work(&chg->ccdetect_work, msecs_to_jiffies(CCDETECT_DELAY_MS));
  	return IRQ_HANDLED;
-@@ -15412,15 +15498,30 @@ bool oplus_chg_is_usb_present(void)
+@@ -15412,15 +15498,45 @@ bool oplus_chg_is_usb_present(void)
  	if (!chip)
  		return false;
  
@@ -213,6 +213,21 @@ index f197cc395d08..1675b68ea68f 100644
 +			iio_read_channel_processed(chg_aca->iio.mid_chan, &vb.intval);
 +			if (vb.intval > 4000000) {
 +				chg_err("ACA mode: host + ext VBUS (%d uV), report present\n", vb.intval);
++
++				/* 强制激活充电 */
++				if (chg_aca->real_charger_type != POWER_SUPPLY_TYPE_USB_DCP) {
++					chg_aca->real_charger_type = POWER_SUPPLY_TYPE_USB_DCP;
++					chg_err("ACA: force real_charger_type to DCP\n");
++				}
++				smblib_set_usb_suspend(chg_aca, false);
++				vote(chg_aca->usb_icl_votable, DCP_VOTER, true, 800000);
++				/* 关闭 AICL 自动降流 */
++				smblib_masked_write(chg_aca, USBIN_AICL_OPTIONS_CFG_REG,
++						    USBIN_AICL_EN_BIT, 0);
++				/* 直接写 ICL 寄存器，绕过 votable 选举 */
++				smblib_set_charge_param(chg_aca, &chg_aca->param.usb_icl, 800000);
++				smblib_icl_override(chg_aca, SW_OVERRIDE_HC_MODE);
++
 +				return true;
 +			}
 +		}
