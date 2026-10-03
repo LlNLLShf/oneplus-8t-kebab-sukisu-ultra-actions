@@ -1,16 +1,5 @@
-From 4728caf1dc99aba49e059445a78592ef28155660 Mon Sep 17 00:00:00 2001
-From: GitHub Actions <actions@github.com>
-Date: Sat, 3 Oct 2026 22:33:52 +0800
-Subject: [PATCH] Add ACA mode support for OnePlus 8T
-
----
- .../oplus/charger_ic/oplus_battery_msm8250.c  | 148 ++++++++++++++++--
- drivers/power/oplus/charger_ic/oplus_mp2650.c |  11 ++
- drivers/usb/dwc3/dwc3-msm.c                   |  19 ++-
- 3 files changed, 160 insertions(+), 18 deletions(-)
-
 diff --git a/drivers/power/oplus/charger_ic/oplus_battery_msm8250.c b/drivers/power/oplus/charger_ic/oplus_battery_msm8250.c
-index f197cc395d08..5ba505ac9e48 100644
+index f197cc395d08..5039dfd8882c 100644
 --- a/drivers/power/oplus/charger_ic/oplus_battery_msm8250.c
 +++ b/drivers/power/oplus/charger_ic/oplus_battery_msm8250.c
 @@ -338,6 +338,10 @@ static struct smb_params smb5_pm8150b_params = {
@@ -177,7 +166,19 @@ index f197cc395d08..5ba505ac9e48 100644
  	smblib_dbg(chg, PR_INTERRUPT, "IRQ: %s\n", irq_data->name);
  
  	rc = smblib_read(chg, TYPE_C_STATE_MACHINE_STATUS_REG, &stat);
-@@ -10432,9 +10508,19 @@ irqreturn_t oplus_ccdetect_change_handler(int irq, void *data)
+@@ -8967,6 +9043,11 @@ static void typec_disable_cmd_work(struct work_struct *work)
+ 	}
+ #endif
+ 
++	if (aca_mode) {
++		chg_err("ACA mode: skip typec_disable_cmd_work\n");
++		return;
++	}
++
+ 	if (smblib_get_prop_typec_mode(chg) != POWER_SUPPLY_TYPEC_NONE) {
+ 		printk(KERN_ERR "!!! %s: active t-c module\n", __func__);
+ 		return;
+@@ -10432,9 +10513,19 @@ irqreturn_t oplus_ccdetect_change_handler(int irq, void *data)
  	struct oplus_chg_chip *chip = data;
  	struct smb_charger *chg = &chip->pmic_spmi.smb5_chip->chg;
  
@@ -198,7 +199,7 @@ index f197cc395d08..5ba505ac9e48 100644
  	printk(KERN_ERR "[OPLUS_CHG][%s]: Scheduling ccdetect work!\n", __func__);
  	schedule_delayed_work(&chg->ccdetect_work, msecs_to_jiffies(CCDETECT_DELAY_MS));
  	return IRQ_HANDLED;
-@@ -15412,15 +15498,45 @@ bool oplus_chg_is_usb_present(void)
+@@ -15412,15 +15503,52 @@ bool oplus_chg_is_usb_present(void)
  	if (!chip)
  		return false;
  
@@ -219,7 +220,14 @@ index f197cc395d08..5ba505ac9e48 100644
 +					chg_aca->real_charger_type = POWER_SUPPLY_TYPE_USB_DCP;
 +					chg_err("ACA: force real_charger_type to DCP\n");
 +				}
-+				smblib_set_usb_suspend(chg_aca, false);
++				/* 只在需要时解除 suspend，避免反复触发 usbin-plugin 中断 */
++				{
++					int usb_suspend = 0;
++					smblib_get_usb_suspend(chg_aca, &usb_suspend);
++					if (usb_suspend) {
++						smblib_set_usb_suspend(chg_aca, false);
++					}
++				}
 +				vote(chg_aca->usb_icl_votable, DCP_VOTER, true, 800000);
 +				/* 关闭 AICL 自动降流 */
 +				smblib_masked_write(chg_aca, USBIN_AICL_OPTIONS_CFG_REG,
@@ -324,6 +332,3 @@ index 7ade39c10a21..8d12bfbbe5d8 100644
  		if (ret) {
  			dev_err(mdwc->dev, "unable to enable vbus_reg\n");
  			mdwc->hs_phy->flags &= ~PHY_HOST_MODE;
--- 
-2.54.0
-
