@@ -1,5 +1,5 @@
 diff --git a/drivers/power/oplus/charger_ic/oplus_battery_msm8250.c b/drivers/power/oplus/charger_ic/oplus_battery_msm8250.c
-index f197cc395d08..94c197fc326c 100644
+index f197cc395d08..7b86ab7f6dd0 100644
 --- a/drivers/power/oplus/charger_ic/oplus_battery_msm8250.c
 +++ b/drivers/power/oplus/charger_ic/oplus_battery_msm8250.c
 @@ -338,6 +338,10 @@ static struct smb_params smb5_pm8150b_params = {
@@ -189,7 +189,7 @@ index f197cc395d08..94c197fc326c 100644
  	printk(KERN_ERR "[OPLUS_CHG][%s]: Scheduling ccdetect work!\n", __func__);
  	schedule_delayed_work(&chg->ccdetect_work, msecs_to_jiffies(CCDETECT_DELAY_MS));
  	return IRQ_HANDLED;
-@@ -15412,15 +15503,63 @@ bool oplus_chg_is_usb_present(void)
+@@ -15412,15 +15503,76 @@ bool oplus_chg_is_usb_present(void)
  	if (!chip)
  		return false;
  
@@ -237,6 +237,19 @@ index f197cc395d08..94c197fc326c 100644
 +				smblib_masked_write(chg_aca, CMD_ICL_OVERRIDE_REG, ICL_OVERRIDE_BIT, ICL_OVERRIDE_BIT);
 +				smblib_masked_write(chg_aca, USBIN_LOAD_CFG_REG, ICL_OVERRIDE_AFTER_APSD_BIT, 0);
 +
++				/* ACA 模式下 real_charger_type 被强制为 DCP，
++				 * OPLUS VOOC 快充状态机会误以为是 VOOC 适配器并尝试与 MCU 握手，
++				 * 握手失败后调用 mp2650_suspend_charger() 关断 MP2650 输入，
++				 * 导致电池充电电流为 0（status 仍报 Charging 是假象）。
++				 * 这里每次检查时反向恢复一次，抵消 VOOC 路径的 suspend。
++				 * unsuspend/enable 本身是幂等的（会检查 charger_suspended 状态），
++				 * 频繁调用安全。 */
++				{
++					extern int mp2650_unsuspend_charger(void);
++					extern int mp2650_enable_charging(void);
++					mp2650_unsuspend_charger();
++					mp2650_enable_charging();
++				}
 +				return true;
 +			}
 +		}
