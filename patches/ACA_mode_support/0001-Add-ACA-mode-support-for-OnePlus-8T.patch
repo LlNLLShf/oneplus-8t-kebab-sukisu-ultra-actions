@@ -1,5 +1,5 @@
 diff --git a/drivers/power/oplus/charger_ic/oplus_battery_msm8250.c b/drivers/power/oplus/charger_ic/oplus_battery_msm8250.c
-index f197cc395d08..f70da965161c 100644
+index f197cc395d08..50ec78093794 100644
 --- a/drivers/power/oplus/charger_ic/oplus_battery_msm8250.c
 +++ b/drivers/power/oplus/charger_ic/oplus_battery_msm8250.c
 @@ -338,6 +338,10 @@ static struct smb_params smb5_pm8150b_params = {
@@ -168,7 +168,24 @@ index f197cc395d08..f70da965161c 100644
  	if (smblib_get_prop_typec_mode(chg) != POWER_SUPPLY_TYPEC_NONE) {
  		printk(KERN_ERR "!!! %s: active t-c module\n", __func__);
  		return;
-@@ -10432,9 +10503,19 @@ irqreturn_t oplus_ccdetect_change_handler(int irq, void *data)
+@@ -9791,6 +9862,16 @@ void smbchg_set_chargerid_switch_val(int value)
+ {
+ 	struct oplus_chg_chip *chip = g_oplus_chip;
+ 
++	/* ACA mode: chargerid_switch 控制 D+/D- 路由。
++	 * 切换它会把 USB 数据线从 SoC 的 USB 控制器切到充电器 IC，
++	 * 导致 USB 总线 reset、U 盘/键鼠断连。
++	 * ACA 模式下保持 D+/D- 始终连接到 SoC。 */
++
++	if (aca_mode) {
++		chg_err("ACA mode: skip chargerid switch (value=%d)\n", value);
++		return;
++	}
++
+ 	if (chip->normalchg_gpio.chargerid_switch_gpio <= 0) {
+ 		chg_err("chargerid_switch_gpio not exist, return\n");
+ 		return;
+@@ -10432,9 +10513,19 @@ irqreturn_t oplus_ccdetect_change_handler(int irq, void *data)
  	struct oplus_chg_chip *chip = data;
  	struct smb_charger *chg = &chip->pmic_spmi.smb5_chip->chg;
  
@@ -189,7 +206,7 @@ index f197cc395d08..f70da965161c 100644
  	printk(KERN_ERR "[OPLUS_CHG][%s]: Scheduling ccdetect work!\n", __func__);
  	schedule_delayed_work(&chg->ccdetect_work, msecs_to_jiffies(CCDETECT_DELAY_MS));
  	return IRQ_HANDLED;
-@@ -15412,15 +15493,53 @@ bool oplus_chg_is_usb_present(void)
+@@ -15412,15 +15503,53 @@ bool oplus_chg_is_usb_present(void)
  	if (!chip)
  		return false;
  
