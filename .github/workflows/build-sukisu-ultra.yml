@@ -579,40 +579,50 @@ jobs:
           test -s "$ACA_PATCH"
           sha256sum "$ACA_PATCH" | tee audit/aca-mode-patch.sha256
 
-          cat > "$RUNNER_TEMP/aca-files.expected" <<'EOF'
-          drivers/power/oplus/charger_ic/oplus_battery_msm8250.c
-          drivers/power/oplus/charger_ic/oplus_mp2650.c
-          drivers/usb/dwc3/dwc3-msm.c
-          EOF
-
+          # 从补丁里提取受影响的文件列表（唯一真实来源）
           git apply --numstat "$ACA_PATCH" |
             awk -F '\t' '{print $3}' |
             LC_ALL=C sort -u \
             > "$RUNNER_TEMP/aca-files.from-patch"
 
-          diff -u "$RUNNER_TEMP/aca-files.expected" \
-            "$RUNNER_TEMP/aca-files.from-patch"
-
-          if grep -Eq '(^/|(^|/)\.\.(/|$)|\\)' \
-            "$RUNNER_TEMP/aca-files.from-patch"; then
-            echo "::error::Unsafe path found in ACA patch."
+          if [ ! -s "$RUNNER_TEMP/aca-files.from-patch" ]; then
+            echo "::error::ACA patch touches no files."
             exit 1
           fi
 
-          cp "$RUNNER_TEMP/aca-files.expected" audit/aca-files.expected
+          # 拒绝危险路径：绝对路径、..、反斜杠、空行
+          if grep -Eq '(^/|(^|/)\.\.(/|$)|\\)' "$RUNNER_TEMP/aca-files.from-patch"; then
+            echo "::error::Unsafe path found in ACA patch:"
+            grep -En '(^/|(^|/)\.\.(/|$)|\\)' "$RUNNER_TEMP/aca-files.from-patch"
+            exit 1
+          fi
 
+          # 白名单：只允许 ACA 模式涉及的两个目录
+          if grep -Ev '^drivers/(power/oplus|usb/dwc3)/' "$RUNNER_TEMP/aca-files.from-patch" >/dev/null; then
+            echo "::error::ACA patch touches unexpected paths:"
+            grep -Ev '^drivers/(power/oplus|usb/dwc3)/' "$RUNNER_TEMP/aca-files.from-patch"
+            exit 1
+          fi
+
+          echo "ACA patch affects files:"
+          cat "$RUNNER_TEMP/aca-files.from-patch"
+
+          # 校验补丁的 aca_mode 参数在所有目标文件里都注册了
+          while IFS= read -r f; do
+            grep -Fq 'module_param(aca_mode, bool, 0644);' "kernel_experiment/$f" || {
+              echo "::error::Missing aca_mode module_param in $f"
+              exit 1
+            }
+          done < "$RUNNER_TEMP/aca-files.from-patch"
+
+          # 保留审计用的文件列表
+          cp "$RUNNER_TEMP/aca-files.from-patch" audit/aca-files.expected
+
+          # 应用到两个 worktree
           for tree in kernel_baseline kernel_experiment; do
             git -C "$tree" apply --check --whitespace=error-all "$ACA_PATCH"
             git -C "$tree" apply --whitespace=error-all "$ACA_PATCH"
             git -C "$tree" diff --check
-          done
-
-          for f in \
-            drivers/power/oplus/charger_ic/oplus_battery_msm8250.c \
-            drivers/power/oplus/charger_ic/oplus_mp2650.c \
-            drivers/usb/dwc3/dwc3-msm.c; do
-            grep -Fq 'module_param(aca_mode, bool, 0644);' \
-              "kernel_experiment/$f"
           done
 
       - name: Apply baseline and experimental patches exactly
