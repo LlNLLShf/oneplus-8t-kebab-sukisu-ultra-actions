@@ -1,8 +1,8 @@
 diff --git a/drivers/power/oplus/charger_ic/oplus_battery_msm8250.c b/drivers/power/oplus/charger_ic/oplus_battery_msm8250.c
-index f197cc395d08..7b86ab7f6dd0 100644
+index f197cc395d08..57c2ef45eed4 100644
 --- a/drivers/power/oplus/charger_ic/oplus_battery_msm8250.c
 +++ b/drivers/power/oplus/charger_ic/oplus_battery_msm8250.c
-@@ -338,6 +338,10 @@ static struct smb_params smb5_pm8150b_params = {
+@@ -338,6 +338,28 @@ static struct smb_params smb5_pm8150b_params = {
  static int __debug_mask = PR_MISC | PR_OTG | PR_INTERRUPT | PR_REGISTER;
  module_param_named(debug_mask, __debug_mask, int, 0600);
  
@@ -10,10 +10,28 @@ index f197cc395d08..7b86ab7f6dd0 100644
 +module_param(aca_mode, bool, 0644);
 +MODULE_PARM_DESC(aca_mode, "Enable ACA mode (Host + External Charging)");
 +
++static int aca_icl_ma = 800;
++module_param(aca_icl_ma, int, 0644);
++MODULE_PARM_DESC(aca_icl_ma, "ACA mode USB input current limit in mA (100..3000, default 800)");
++
++/* ACA 输入电流上限，单位 uA。运行时 clamp 到 [100mA, 3000mA]。
++ * 传入过小的值（<100mA）可能导致充电停滞，过大的值（>3000mA）
++ * 会超过 PM8150B 与 USB 线材/电源的实际能力，触发 VBUS 崩塌。 */
++static inline int aca_icl_ua(void)
++{
++	int ma = aca_icl_ma;
++
++	if (ma < 100)
++		ma = 100;
++	if (ma > 3000)
++		ma = 3000;
++
++	return ma * 1000;
++}
  #else
  static int __debug_mask;
  #endif
-@@ -560,10 +564,19 @@ irqreturn_t oplus_wired_conn_change_handler(int irq, void *data)
+@@ -560,10 +582,19 @@ irqreturn_t oplus_wired_conn_change_handler(int irq, void *data)
  {
  	struct oplus_chg_chip *chip = data;
  	struct smb_charger *chg = &chip->pmic_spmi.smb5_chip->chg;
@@ -35,7 +53,7 @@ index f197cc395d08..7b86ab7f6dd0 100644
  		pr_info("%s:chg->typec_mode = sink return!\n", __func__);
  		return IRQ_HANDLED;
  	}
-@@ -1187,6 +1200,12 @@ static void smblib_notify_usb_host(struct smb_charger *chg, bool enable)
+@@ -1187,6 +1218,12 @@ static void smblib_notify_usb_host(struct smb_charger *chg, bool enable)
  	int rc = 0;
  
  	if (enable) {
@@ -48,7 +66,7 @@ index f197cc395d08..7b86ab7f6dd0 100644
  		smblib_dbg(chg, PR_OTG, "enabling VBUS in OTG mode\n");
  		rc = smblib_masked_write(chg, DCDC_CMD_OTG_REG, OTG_EN_BIT, OTG_EN_BIT);
  		if (rc < 0) {
-@@ -1194,6 +1213,7 @@ static void smblib_notify_usb_host(struct smb_charger *chg, bool enable)
+@@ -1194,6 +1231,7 @@ static void smblib_notify_usb_host(struct smb_charger *chg, bool enable)
  			return;
  		}
  
@@ -56,7 +74,7 @@ index f197cc395d08..7b86ab7f6dd0 100644
  		smblib_notify_extcon_props(chg, EXTCON_USB_HOST);
  	} else {
  		smblib_dbg(chg, PR_OTG, "disabling VBUS in OTG mode\n");
-@@ -2957,7 +2977,11 @@ int smblib_vbus_regulator_enable(struct regulator_dev *rdev)
+@@ -2957,7 +2995,11 @@ int smblib_vbus_regulator_enable(struct regulator_dev *rdev)
  	struct oplus_chg_chip *chip = g_oplus_chip;
  	int count = 20;
  #endif /*OPLUS_FEATURE_CHG_BASIC*/
@@ -69,7 +87,7 @@ index f197cc395d08..7b86ab7f6dd0 100644
  	smblib_dbg(chg, PR_OTG, "enabling OTG\n");
  	oplus_wake_up_usbtemp_thread();
  
-@@ -4279,6 +4303,17 @@ int smblib_get_prop_usb_online(struct smb_charger *chg, union power_supply_propv
+@@ -4279,6 +4321,17 @@ int smblib_get_prop_usb_online(struct smb_charger *chg, union power_supply_propv
  	}
  #endif /*OPLUS_FEATURE_CHG_BASIC*/
  
@@ -79,7 +97,7 @@ index f197cc395d08..7b86ab7f6dd0 100644
 +			chg->real_charger_type = POWER_SUPPLY_TYPE_USB_DCP;
 +			smblib_err(chg, "ACA: force real_charger_type to DCP\n");
 +		}
-+		vote(chg->usb_icl_votable, DCP_VOTER, true, 800000);
++		vote(chg->usb_icl_votable, DCP_VOTER, true, aca_icl_ua());
 +		val->intval = 1;
 +		return 0;
 +	}
@@ -87,7 +105,7 @@ index f197cc395d08..7b86ab7f6dd0 100644
  	if (get_client_vote_locked(chg->usb_icl_votable, USER_VOTER) == 0) {
  		val->intval = false;
  #ifdef OPLUS_FEATURE_CHG_BASIC
-@@ -4311,6 +4346,17 @@ int smblib_get_usb_online(struct smb_charger *chg, union power_supply_propval *v
+@@ -4311,6 +4364,17 @@ int smblib_get_usb_online(struct smb_charger *chg, union power_supply_propval *v
  	if (!val->intval)
  		goto exit;
  
@@ -97,7 +115,7 @@ index f197cc395d08..7b86ab7f6dd0 100644
 +			chg->real_charger_type = POWER_SUPPLY_TYPE_USB_DCP;
 +			smblib_err(chg, "ACA: force real_charger_type to DCP\n");
 +		}
-+		vote(chg->usb_icl_votable, DCP_VOTER, true, 800000);
++		vote(chg->usb_icl_votable, DCP_VOTER, true, aca_icl_ua());
 +		val->intval = 1;
 +		return rc;
 +	}
@@ -105,7 +123,7 @@ index f197cc395d08..7b86ab7f6dd0 100644
  	if (((chg->typec_mode == POWER_SUPPLY_TYPEC_SOURCE_DEFAULT) ||
  	     (chg->typec_mode == POWER_SUPPLY_TYPEC_SOURCE_MEDIUM) ||
  	     (chg->typec_mode == POWER_SUPPLY_TYPEC_SOURCE_HIGH) ||
-@@ -7504,6 +7550,16 @@ irqreturn_t typec_state_change_irq_handler(int irq, void *data)
+@@ -7504,6 +7568,16 @@ irqreturn_t typec_state_change_irq_handler(int irq, void *data)
  	struct oplus_chg_chip *chip = g_oplus_chip;
  #endif
  
@@ -122,7 +140,7 @@ index f197cc395d08..7b86ab7f6dd0 100644
  	if (chg->connector_type == POWER_SUPPLY_CONNECTOR_MICRO_USB) {
  		smblib_dbg(chg, PR_INTERRUPT, "Ignoring for micro USB\n");
  		return IRQ_HANDLED;
-@@ -7606,6 +7662,16 @@ irqreturn_t typec_attach_detach_irq_handler(int irq, void *data)
+@@ -7606,6 +7680,16 @@ irqreturn_t typec_attach_detach_irq_handler(int irq, void *data)
  	bool attached = false;
  	int rc;
  
@@ -139,7 +157,7 @@ index f197cc395d08..7b86ab7f6dd0 100644
  	smblib_dbg(chg, PR_INTERRUPT, "IRQ: %s\n", irq_data->name);
  
  	rc = smblib_read(chg, TYPE_C_STATE_MACHINE_STATUS_REG, &stat);
-@@ -8967,6 +9033,11 @@ static void typec_disable_cmd_work(struct work_struct *work)
+@@ -8967,6 +9051,11 @@ static void typec_disable_cmd_work(struct work_struct *work)
  	}
  #endif
  
@@ -151,7 +169,7 @@ index f197cc395d08..7b86ab7f6dd0 100644
  	if (smblib_get_prop_typec_mode(chg) != POWER_SUPPLY_TYPEC_NONE) {
  		printk(KERN_ERR "!!! %s: active t-c module\n", __func__);
  		return;
-@@ -9791,6 +9862,16 @@ void smbchg_set_chargerid_switch_val(int value)
+@@ -9791,6 +9880,16 @@ void smbchg_set_chargerid_switch_val(int value)
  {
  	struct oplus_chg_chip *chip = g_oplus_chip;
  
@@ -168,7 +186,7 @@ index f197cc395d08..7b86ab7f6dd0 100644
  	if (chip->normalchg_gpio.chargerid_switch_gpio <= 0) {
  		chg_err("chargerid_switch_gpio not exist, return\n");
  		return;
-@@ -10432,9 +10513,19 @@ irqreturn_t oplus_ccdetect_change_handler(int irq, void *data)
+@@ -10432,9 +10531,19 @@ irqreturn_t oplus_ccdetect_change_handler(int irq, void *data)
  	struct oplus_chg_chip *chip = data;
  	struct smb_charger *chg = &chip->pmic_spmi.smb5_chip->chg;
  
@@ -189,7 +207,7 @@ index f197cc395d08..7b86ab7f6dd0 100644
  	printk(KERN_ERR "[OPLUS_CHG][%s]: Scheduling ccdetect work!\n", __func__);
  	schedule_delayed_work(&chg->ccdetect_work, msecs_to_jiffies(CCDETECT_DELAY_MS));
  	return IRQ_HANDLED;
-@@ -15412,15 +15503,76 @@ bool oplus_chg_is_usb_present(void)
+@@ -15412,15 +15521,76 @@ bool oplus_chg_is_usb_present(void)
  	if (!chip)
  		return false;
  
@@ -219,12 +237,12 @@ index f197cc395d08..7b86ab7f6dd0 100644
 +						chg_err("ACA: USBIN suspend cleared\n");
 +					}
 +				}
-+				vote(chg_aca->usb_icl_votable, DCP_VOTER, true, 800000);
++				vote(chg_aca->usb_icl_votable, DCP_VOTER, true, aca_icl_ua());
 +				/* 关闭 AICL 自动降流 */
 +				smblib_masked_write(chg_aca, USBIN_AICL_OPTIONS_CFG_REG,
 +									USBIN_AICL_EN_BIT, 0);
 +				/* 直接写 ICL 寄存器，绕过 votable 选举 */
-+				smblib_set_charge_param(chg_aca, &chg_aca->param.usb_icl, 800000);
++				smblib_set_charge_param(chg_aca, &chg_aca->param.usb_icl, aca_icl_ua());
 +				/* 强制软件 ICL 生效：
 +				 *   USBIN_MODE_CHG         = 1（保持大电流模式）
 +				 *   ICL_OVERRIDE           = 1（软件值覆盖硬件 AICL）
