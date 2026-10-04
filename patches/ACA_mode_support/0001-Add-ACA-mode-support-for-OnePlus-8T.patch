@@ -1,5 +1,5 @@
 diff --git a/drivers/power/oplus/charger_ic/oplus_battery_msm8250.c b/drivers/power/oplus/charger_ic/oplus_battery_msm8250.c
-index f197cc395d08..5039dfd8882c 100644
+index f197cc395d08..d10814cdeeae 100644
 --- a/drivers/power/oplus/charger_ic/oplus_battery_msm8250.c
 +++ b/drivers/power/oplus/charger_ic/oplus_battery_msm8250.c
 @@ -338,6 +338,10 @@ static struct smb_params smb5_pm8150b_params = {
@@ -72,53 +72,43 @@ index f197cc395d08..5039dfd8882c 100644
  	smblib_dbg(chg, PR_OTG, "enabling OTG\n");
  	oplus_wake_up_usbtemp_thread();
  
-@@ -4279,6 +4303,22 @@ int smblib_get_prop_usb_online(struct smb_charger *chg, union power_supply_propv
+@@ -4279,6 +4303,17 @@ int smblib_get_prop_usb_online(struct smb_charger *chg, union power_supply_propv
  	}
  #endif /*OPLUS_FEATURE_CHG_BASIC*/
  
-+	/* ACA mode: 外部 VBUS > 4.0V 就报告在线，允许从 VBUS 充电 */
-+	if (aca_mode && chg->iio.mid_chan) {
-+		union power_supply_propval vb = {0, };
-+		iio_read_channel_processed(chg->iio.mid_chan, &vb.intval);
-+		if (vb.intval > 4000000) {
-+			if (chg->real_charger_type != POWER_SUPPLY_TYPE_USB_DCP) {
-+				chg->real_charger_type = POWER_SUPPLY_TYPE_USB_DCP;
-+				smblib_err(chg, "ACA: force real_charger_type to DCP\n");
-+			}
-+			smblib_set_usb_suspend(chg, false);
-+			vote(chg->usb_icl_votable, DCP_VOTER, true, 800000);
-+			val->intval = 1;
-+			return 0;
++	/* ACA mode: 处于 Host 模式时报告在线，允许从 VBUS 充电（不做硬件操作） */
++	if (aca_mode && chg->otg_present) {
++		if (chg->real_charger_type != POWER_SUPPLY_TYPE_USB_DCP) {
++			chg->real_charger_type = POWER_SUPPLY_TYPE_USB_DCP;
++			smblib_err(chg, "ACA: force real_charger_type to DCP\n");
 +		}
++		vote(chg->usb_icl_votable, DCP_VOTER, true, 800000);
++		val->intval = 1;
++		return 0;
 +	}
 +
  	if (get_client_vote_locked(chg->usb_icl_votable, USER_VOTER) == 0) {
  		val->intval = false;
  #ifdef OPLUS_FEATURE_CHG_BASIC
-@@ -4311,6 +4351,22 @@ int smblib_get_usb_online(struct smb_charger *chg, union power_supply_propval *v
+@@ -4311,6 +4346,17 @@ int smblib_get_usb_online(struct smb_charger *chg, union power_supply_propval *v
  	if (!val->intval)
  		goto exit;
  
-+	/* ACA mode: Host + 外部 VBUS > 4.0V，强制报告在线并激活充电 */
-+	if (aca_mode && chg->iio.mid_chan) {
-+		union power_supply_propval vb = {0, };
-+		iio_read_channel_processed(chg->iio.mid_chan, &vb.intval);
-+		if (vb.intval > 4000000) {
-+			if (chg->real_charger_type != POWER_SUPPLY_TYPE_USB_DCP) {
-+				chg->real_charger_type = POWER_SUPPLY_TYPE_USB_DCP;
-+				smblib_err(chg, "ACA: force real_charger_type to DCP\n");
-+			}
-+			smblib_set_usb_suspend(chg, false);
-+			vote(chg->usb_icl_votable, DCP_VOTER, true, 800000);
-+			val->intval = 1;
-+			return rc;
++	/* ACA mode: 处于 Host 模式时报告在线（不做硬件操作） */
++	if (aca_mode && chg->otg_present) {
++		if (chg->real_charger_type != POWER_SUPPLY_TYPE_USB_DCP) {
++			chg->real_charger_type = POWER_SUPPLY_TYPE_USB_DCP;
++			smblib_err(chg, "ACA: force real_charger_type to DCP\n");
 +		}
++		vote(chg->usb_icl_votable, DCP_VOTER, true, 800000);
++		val->intval = 1;
++		return rc;
 +	}
 +
  	if (((chg->typec_mode == POWER_SUPPLY_TYPEC_SOURCE_DEFAULT) ||
  	     (chg->typec_mode == POWER_SUPPLY_TYPEC_SOURCE_MEDIUM) ||
  	     (chg->typec_mode == POWER_SUPPLY_TYPEC_SOURCE_HIGH) ||
-@@ -7493,16 +7549,26 @@ irqreturn_t typec_state_change_irq_handler(int irq, void *data)
+@@ -7493,16 +7539,26 @@ irqreturn_t typec_state_change_irq_handler(int irq, void *data)
  	struct smb_irq_data *irq_data = data;
  	struct smb_charger *chg = irq_data->parent_data;
  	int typec_mode;
@@ -149,7 +139,7 @@ index f197cc395d08..5039dfd8882c 100644
  
  	if (chg->connector_type == POWER_SUPPLY_CONNECTOR_MICRO_USB) {
  		smblib_dbg(chg, PR_INTERRUPT, "Ignoring for micro USB\n");
-@@ -7606,6 +7672,16 @@ irqreturn_t typec_attach_detach_irq_handler(int irq, void *data)
+@@ -7606,6 +7662,16 @@ irqreturn_t typec_attach_detach_irq_handler(int irq, void *data)
  	bool attached = false;
  	int rc;
  
@@ -166,7 +156,7 @@ index f197cc395d08..5039dfd8882c 100644
  	smblib_dbg(chg, PR_INTERRUPT, "IRQ: %s\n", irq_data->name);
  
  	rc = smblib_read(chg, TYPE_C_STATE_MACHINE_STATUS_REG, &stat);
-@@ -8967,6 +9043,11 @@ static void typec_disable_cmd_work(struct work_struct *work)
+@@ -8967,6 +9033,11 @@ static void typec_disable_cmd_work(struct work_struct *work)
  	}
  #endif
  
@@ -178,7 +168,7 @@ index f197cc395d08..5039dfd8882c 100644
  	if (smblib_get_prop_typec_mode(chg) != POWER_SUPPLY_TYPEC_NONE) {
  		printk(KERN_ERR "!!! %s: active t-c module\n", __func__);
  		return;
-@@ -10432,9 +10513,19 @@ irqreturn_t oplus_ccdetect_change_handler(int irq, void *data)
+@@ -10432,9 +10503,19 @@ irqreturn_t oplus_ccdetect_change_handler(int irq, void *data)
  	struct oplus_chg_chip *chip = data;
  	struct smb_charger *chg = &chip->pmic_spmi.smb5_chip->chg;
  
@@ -199,7 +189,7 @@ index f197cc395d08..5039dfd8882c 100644
  	printk(KERN_ERR "[OPLUS_CHG][%s]: Scheduling ccdetect work!\n", __func__);
  	schedule_delayed_work(&chg->ccdetect_work, msecs_to_jiffies(CCDETECT_DELAY_MS));
  	return IRQ_HANDLED;
-@@ -15412,15 +15503,52 @@ bool oplus_chg_is_usb_present(void)
+@@ -15412,15 +15493,52 @@ bool oplus_chg_is_usb_present(void)
  	if (!chip)
  		return false;
  
