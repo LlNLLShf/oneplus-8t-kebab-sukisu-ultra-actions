@@ -1,5 +1,5 @@
 diff --git a/drivers/power/oplus/charger_ic/oplus_battery_msm8250.c b/drivers/power/oplus/charger_ic/oplus_battery_msm8250.c
-index f197cc395d08..50ec78093794 100644
+index f197cc395d08..94c197fc326c 100644
 --- a/drivers/power/oplus/charger_ic/oplus_battery_msm8250.c
 +++ b/drivers/power/oplus/charger_ic/oplus_battery_msm8250.c
 @@ -338,6 +338,10 @@ static struct smb_params smb5_pm8150b_params = {
@@ -13,7 +13,7 @@ index f197cc395d08..50ec78093794 100644
  #else
  static int __debug_mask;
  #endif
-@@ -560,12 +564,21 @@ irqreturn_t oplus_wired_conn_change_handler(int irq, void *data)
+@@ -560,10 +564,19 @@ irqreturn_t oplus_wired_conn_change_handler(int irq, void *data)
  {
  	struct oplus_chg_chip *chip = data;
  	struct smb_charger *chg = &chip->pmic_spmi.smb5_chip->chg;
@@ -33,11 +33,8 @@ index f197cc395d08..50ec78093794 100644
 -	    chip->vbatt_num == 2) {
 +		chip->vbatt_num == 2) {
  		pr_info("%s:chg->typec_mode = sink return!\n", __func__);
--		return IRQ_HANDLED;
-+	return IRQ_HANDLED;
+ 		return IRQ_HANDLED;
  	}
- 
- 	cancel_delayed_work_sync(&chg->wired_in_work);
 @@ -1187,6 +1200,12 @@ static void smblib_notify_usb_host(struct smb_charger *chg, bool enable)
  	int rc = 0;
  
@@ -108,25 +105,10 @@ index f197cc395d08..50ec78093794 100644
  	if (((chg->typec_mode == POWER_SUPPLY_TYPEC_SOURCE_DEFAULT) ||
  	     (chg->typec_mode == POWER_SUPPLY_TYPEC_SOURCE_MEDIUM) ||
  	     (chg->typec_mode == POWER_SUPPLY_TYPEC_SOURCE_HIGH) ||
-@@ -7493,16 +7539,26 @@ irqreturn_t typec_state_change_irq_handler(int irq, void *data)
- 	struct smb_irq_data *irq_data = data;
- 	struct smb_charger *chg = irq_data->parent_data;
- 	int typec_mode;
--#ifdef OPLUS_CUSTOM_OP_DEF
-+	#ifdef OPLUS_CUSTOM_OP_DEF
- 	int rc;
- 	int wireless_present = 0;
- 	union power_supply_propval pval;
--#endif
--#ifdef OPLUS_FEATURE_CHG_BASIC
-+	#endif
-+	#ifdef OPLUS_FEATURE_CHG_BASIC
- 	bool current_status = 0;
- 	static bool dfp_status = 0;
+@@ -7504,6 +7550,16 @@ irqreturn_t typec_state_change_irq_handler(int irq, void *data)
  	struct oplus_chg_chip *chip = g_oplus_chip;
--#endif
-+	#endif
-+
+ #endif
+ 
 +	/* ACA mode: 外部 VBUS 存在时忽略 CC 状态变化，防止 USB 总线被重建 */
 +	if (aca_mode && chg->iio.mid_chan) {
 +		union power_supply_propval vb = {0, };
@@ -136,9 +118,10 @@ index f197cc395d08..50ec78093794 100644
 +			return IRQ_HANDLED;
 +		}
 +	}
- 
++
  	if (chg->connector_type == POWER_SUPPLY_CONNECTOR_MICRO_USB) {
  		smblib_dbg(chg, PR_INTERRUPT, "Ignoring for micro USB\n");
+ 		return IRQ_HANDLED;
 @@ -7606,6 +7662,16 @@ irqreturn_t typec_attach_detach_irq_handler(int irq, void *data)
  	bool attached = false;
  	int rc;
@@ -206,7 +189,7 @@ index f197cc395d08..50ec78093794 100644
  	printk(KERN_ERR "[OPLUS_CHG][%s]: Scheduling ccdetect work!\n", __func__);
  	schedule_delayed_work(&chg->ccdetect_work, msecs_to_jiffies(CCDETECT_DELAY_MS));
  	return IRQ_HANDLED;
-@@ -15412,15 +15503,53 @@ bool oplus_chg_is_usb_present(void)
+@@ -15412,15 +15503,63 @@ bool oplus_chg_is_usb_present(void)
  	if (!chip)
  		return false;
  
@@ -239,10 +222,20 @@ index f197cc395d08..50ec78093794 100644
 +				vote(chg_aca->usb_icl_votable, DCP_VOTER, true, 800000);
 +				/* 关闭 AICL 自动降流 */
 +				smblib_masked_write(chg_aca, USBIN_AICL_OPTIONS_CFG_REG,
-+						    USBIN_AICL_EN_BIT, 0);
++									USBIN_AICL_EN_BIT, 0);
 +				/* 直接写 ICL 寄存器，绕过 votable 选举 */
 +				smblib_set_charge_param(chg_aca, &chg_aca->param.usb_icl, 800000);
-+				smblib_icl_override(chg_aca, SW_OVERRIDE_HC_MODE);
++				/* 强制软件 ICL 生效：
++				 *   USBIN_MODE_CHG         = 1（保持大电流模式）
++				 *   ICL_OVERRIDE           = 1（软件值覆盖硬件 AICL）
++				 *   ICL_OVERRIDE_AFTER_APSD= 0（APSD 完成后不再被硬件默认值覆盖）
++				 * 之前用 SW_OVERRIDE_HC_MODE 会清掉 ICL_OVERRIDE 并置上
++				 * ICL_OVERRIDE_AFTER_APSD，导致 APSD 检测到 DCP 后硬件
++				 * 把 ICL 拉回 DCP 默认的 500mA，我们写入的 800mA 被覆盖。
++				 */
++				smblib_masked_write(chg_aca, USBIN_ICL_OPTIONS_REG, USBIN_MODE_CHG_BIT, USBIN_MODE_CHG_BIT);
++				smblib_masked_write(chg_aca, CMD_ICL_OVERRIDE_REG, ICL_OVERRIDE_BIT, ICL_OVERRIDE_BIT);
++				smblib_masked_write(chg_aca, USBIN_LOAD_CFG_REG, ICL_OVERRIDE_AFTER_APSD_BIT, 0);
 +
 +				return true;
 +			}
@@ -261,8 +254,8 @@ index f197cc395d08..50ec78093794 100644
 -		rc = false;
 -		return rc;
 -	}
-+	rc = false;
-+	return rc;
++			rc = false;
++			return rc;
 +		}
  #endif /*OPLUS_FEATURE_CHG_BASIC*/
  
