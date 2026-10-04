@@ -302,6 +302,38 @@ index 9447a11abda9..59ee29ae59e9 100644
  	rc = mp2650_burst_mode_enable(true);
  
  	mp2650_set_wdt_timer(REG09_MP2650_WTD_TIMER_DISABLE);
+diff --git a/drivers/power/oplus/oplus_charger.c b/drivers/power/oplus/oplus_charger.c
+index 3ba9779bccc1..218f1f385f6d 100644
+--- a/drivers/power/oplus/oplus_charger.c
++++ b/drivers/power/oplus/oplus_charger.c
+@@ -96,6 +96,10 @@
+ 
+ static struct oplus_chg_chip *g_charger_chip = NULL;
+ 
++static bool aca_mode = false;
++module_param(aca_mode, bool, 0644);
++MODULE_PARM_DESC(aca_mode, "Enable ACA mode (Host + External Charging)");
++
+ #define FLASH_SCREEN_CTRL_OTA 0X01
+ #define FLASH_SCREEN_CTRL_DTSI 0X02
+ 
+@@ -10292,6 +10296,16 @@ static void oplus_chg_fast_switch_check(struct oplus_chg_chip *chip)
+ {
+ 	static bool mcu_update = false;
+ 
++	/* ACA mode: 不做 VOOC 快充握手，直接返回。
++	 * 否则 VOOC 状态机会不断尝试与不存在的 VOOC MCU 通信失败，
++	 * 每次失败都会调用 oplus_chg_suspend_charger() / oplus_chg_reset_adapter()，
++	 * 导致 MP2650 被 suspend、输入被切断、电池充电电流为 0。
++	 */
++	if (aca_mode) {
++		chg_err("ACA mode: skip fastchg switch check\n");
++		return;
++	}
++
+ 	if (!(chip->vooc_project))
+ 		return;
+ 
 diff --git a/drivers/usb/dwc3/dwc3-msm.c b/drivers/usb/dwc3/dwc3-msm.c
 index 7ade39c10a21..8d12bfbbe5d8 100644
 --- a/drivers/usb/dwc3/dwc3-msm.c
