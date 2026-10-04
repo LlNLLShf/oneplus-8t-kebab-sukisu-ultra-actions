@@ -1,5 +1,5 @@
 diff --git a/drivers/power/oplus/charger_ic/oplus_battery_msm8250.c b/drivers/power/oplus/charger_ic/oplus_battery_msm8250.c
-index f197cc395d08..d10814cdeeae 100644
+index f197cc395d08..f70da965161c 100644
 --- a/drivers/power/oplus/charger_ic/oplus_battery_msm8250.c
 +++ b/drivers/power/oplus/charger_ic/oplus_battery_msm8250.c
 @@ -338,6 +338,10 @@ static struct smb_params smb5_pm8150b_params = {
@@ -189,7 +189,7 @@ index f197cc395d08..d10814cdeeae 100644
  	printk(KERN_ERR "[OPLUS_CHG][%s]: Scheduling ccdetect work!\n", __func__);
  	schedule_delayed_work(&chg->ccdetect_work, msecs_to_jiffies(CCDETECT_DELAY_MS));
  	return IRQ_HANDLED;
-@@ -15412,15 +15493,52 @@ bool oplus_chg_is_usb_present(void)
+@@ -15412,15 +15493,53 @@ bool oplus_chg_is_usb_present(void)
  	if (!chip)
  		return false;
  
@@ -215,7 +215,8 @@ index f197cc395d08..d10814cdeeae 100644
 +					int usb_suspend = 0;
 +					smblib_get_usb_suspend(chg_aca, &usb_suspend);
 +					if (usb_suspend) {
-+						smblib_set_usb_suspend(chg_aca, false);
++						smblib_masked_write(chg_aca, USBIN_CMD_IL_REG, USBIN_SUSPEND_BIT, 0);
++						chg_err("ACA: USBIN suspend cleared\n");
 +					}
 +				}
 +				vote(chg_aca->usb_icl_votable, DCP_VOTER, true, 800000);
