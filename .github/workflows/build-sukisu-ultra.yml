@@ -32,6 +32,10 @@ on:
         required: false
         type: string
         default: approved-pin
+      enable_nethunter:
+        required: false
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       enable_susfs:
@@ -72,6 +76,11 @@ on:
         options:
           - approved-pin
           - latest-lineage-23.2
+      enable_nethunter:
+        description: "Apply Kali NetHunter kernel patches and enable NetHunter-specific configs"
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -89,6 +98,7 @@ env:
   BUILD_CHANNEL: ${{ inputs.build_channel || 'approved' }}
   BASE_KERNEL_COMMIT: ${{ inputs.base_kernel_commit || '' }}
   KERNEL_SOURCE_MODE: ${{ inputs.kernel_source || 'approved-pin' }}
+  ENABLE_NETHUNTER: ${{ github.event_name == 'push' || inputs.enable_nethunter }}
 
 jobs:
   audit-build:
@@ -705,6 +715,65 @@ jobs:
 
           cp "$RUNNER_TEMP/"*.actual audit/
 
+
+      - name: Apply Kali NetHunter kernel patches (optional)
+        if: ${{ env.ENABLE_NETHUNTER == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # 克隆 NetHunter 官方内核构建脚本仓库
+          git clone --depth=1 \
+            https://gitlab.com/kalilinux/nethunter/build-scripts/kali-nethunter-kernel.git \
+            "$RUNNER_TEMP/kali-nethunter-kernel"
+
+          NET_HUNTER_PATCH_DIR="$RUNNER_TEMP/kali-nethunter-kernel/patches/4.19"
+          test -d "$NET_HUNTER_PATCH_DIR"
+
+          # 记录将要应用的补丁列表
+          {
+            echo "## NetHunter patches applied"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          for tree in kernel_baseline kernel_experiment; do
+            cd "$GITHUB_WORKSPACE/$tree"
+
+            for patch in \
+              "$NET_HUNTER_PATCH_DIR/add-wifi-injection-4.14.patch" \
+              "$NET_HUNTER_PATCH_DIR/add-rtl88xxau-5.6.4.2-drivers.patch" \
+              "$NET_HUNTER_PATCH_DIR/fix-ath9k-naming-conflict.patch"; do
+              test -s "$patch"
+              patch_name="$(basename "$patch")"
+
+              if git apply --check --whitespace=error-all "$patch" 2>/dev/null; then
+                git apply --whitespace=error-all "$patch"
+                echo "APPLIED: $patch_name" | tee -a "$GITHUB_STEP_SUMMARY"
+              else
+                # 尝试 patch -p1 方式应用（部分补丁格式差异）
+                if patch -p1 --dry-run < "$patch" >/dev/null 2>&1; then
+                  patch -p1 < "$patch"
+                  echo "APPLIED (patch -p1): $patch_name" | tee -a "$GITHUB_STEP_SUMMARY"
+                else
+                  echo "::error::Failed to apply NetHunter patch: $patch_name"
+                  exit 1
+                fi
+              fi
+            done
+
+            git diff --check
+            cd "$GITHUB_WORKSPACE"
+          done
+
+          # 记录补丁哈希用于审计
+          {
+            echo
+            echo "### Patch SHA256"
+            echo '```text'
+            sha256sum "$NET_HUNTER_PATCH_DIR"/*.patch
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Audit Linux 4.19 SELinux hide backport
         if: ${{ env.ENABLE_SELINUX_HIDE == 'true' }}
         shell: bash
@@ -1041,6 +1110,35 @@ jobs:
             # 为确保容器内网络抓包正常工作，建议同时启用以下网络配置
             scripts/config --file "$config" -e NETFILTER
             scripts/config --file "$config" -e NF_CONNTRACK
+
+                        # --- Kali NetHunter 无线注入核心 ---
+            scripts/config --file "$config" -e CFG80211
+            scripts/config --file "$config" -e CFG80211_WEXT
+            scripts/config --file "$config" -e MAC80211
+            scripts/config --file "$config" -e MAC80211_MESH
+            scripts/config --file "$config" -e WIRELESS_WDS
+            scripts/config --file "$config" -e CFG80211_CRDA_SUPPORT
+
+            # --- Kali NetHunter USB Gadget / HID 攻击支持 ---
+            scripts/config --file "$config" -e USB_CONFIGFS
+            scripts/config --file "$config" -e USB_CONFIGFS_F_HID
+            scripts/config --file "$config" -e USB_CONFIGFS_MASS_STORAGE
+            scripts/config --file "$config" -e USB_CONFIGFS_SERIAL
+            scripts/config --file "$config" -e USB_CONFIGFS_ACM
+            scripts/config --file "$config" -e USB_CONFIGFS_RNDIS
+            scripts/config --file "$config" -e USB_CONFIGFS_ECM
+            scripts/config --file "$config" -e USB_ACM
+            scripts/config --file "$config" -e USB_U_SERIAL
+            scripts/config --file "$config" -e USB_U_ETHER
+            scripts/config --file "$config" -e USB_F_ACM
+            scripts/config --file "$config" -e USB_F_ECM
+            scripts/config --file "$config" -e USB_F_RNDIS
+            scripts/config --file "$config" -e USB_F_MASS_STORAGE
+            scripts/config --file "$config" -e USB_F_HID
+            scripts/config --file "$config" -e USB_F_FS
+            scripts/config --file "$config" -e CONFIGFS_FS
+            scripts/config --file "$config" -e UINPUT
+
           }
 
           configure_tree() {
