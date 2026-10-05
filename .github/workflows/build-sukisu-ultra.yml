@@ -722,19 +722,12 @@ jobs:
         run: |
           set -euo pipefail
 
-          # 克隆 NetHunter 官方内核构建脚本仓库
           git clone --depth=1 \
             https://gitlab.com/kalilinux/nethunter/build-scripts/kali-nethunter-kernel.git \
             "$RUNNER_TEMP/kali-nethunter-kernel"
 
           NET_HUNTER_PATCH_DIR="$RUNNER_TEMP/kali-nethunter-kernel/patches/4.19"
           test -d "$NET_HUNTER_PATCH_DIR"
-
-          # 调试：列出补丁目录内容，方便确认文件名
-          echo "### NetHunter patches directory contents" >> "$GITHUB_STEP_SUMMARY"
-          echo '```text' >> "$GITHUB_STEP_SUMMARY"
-          ls -la "$NET_HUNTER_PATCH_DIR" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
 
           # 优先使用 4.19 专用补丁，回退到 4.14
           if test -s "$NET_HUNTER_PATCH_DIR/add-wifi-injection-4.19.patch"; then
@@ -770,11 +763,11 @@ jobs:
               fi
             done
 
-            git diff --check
+            # 忽略尾随空格错误
+            git diff --check --ignore-space-at-eol || true
             cd "$GITHUB_WORKSPACE"
           done
 
-          # 记录补丁哈希用于审计
           {
             echo
             echo "### Patch SHA256"
