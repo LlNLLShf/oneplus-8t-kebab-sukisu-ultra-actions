@@ -730,17 +730,27 @@ jobs:
           NET_HUNTER_PATCH_DIR="$RUNNER_TEMP/kali-nethunter-kernel/patches/4.19"
           test -d "$NET_HUNTER_PATCH_DIR"
 
-          # 记录将要应用的补丁列表
-          {
-            echo "## NetHunter patches applied"
-            echo
-          } >> "$GITHUB_STEP_SUMMARY"
+          # 调试：列出补丁目录内容，方便确认文件名
+          echo "### NetHunter patches directory contents" >> "$GITHUB_STEP_SUMMARY"
+          echo '```text' >> "$GITHUB_STEP_SUMMARY"
+          ls -la "$NET_HUNTER_PATCH_DIR" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+          # 优先使用 4.19 专用补丁，回退到 4.14
+          if test -s "$NET_HUNTER_PATCH_DIR/add-wifi-injection-4.19.patch"; then
+            injection_patch="$NET_HUNTER_PATCH_DIR/add-wifi-injection-4.19.patch"
+          elif test -s "$NET_HUNTER_PATCH_DIR/add-wifi-injection-4.14.patch"; then
+            injection_patch="$NET_HUNTER_PATCH_DIR/add-wifi-injection-4.14.patch"
+          else
+            echo "::error::No WiFi injection patch found for kernel 4.19."
+            exit 1
+          fi
 
           for tree in kernel_baseline kernel_experiment; do
             cd "$GITHUB_WORKSPACE/$tree"
 
             for patch in \
-              "$NET_HUNTER_PATCH_DIR/add-wifi-injection-4.14.patch" \
+              "$injection_patch" \
               "$NET_HUNTER_PATCH_DIR/add-rtl88xxau-5.6.4.2-drivers.patch" \
               "$NET_HUNTER_PATCH_DIR/fix-ath9k-naming-conflict.patch"; do
               test -s "$patch"
@@ -750,7 +760,6 @@ jobs:
                 git apply --whitespace=error-all "$patch"
                 echo "APPLIED: $patch_name" | tee -a "$GITHUB_STEP_SUMMARY"
               else
-                # 尝试 patch -p1 方式应用（部分补丁格式差异）
                 if patch -p1 --dry-run < "$patch" >/dev/null 2>&1; then
                   patch -p1 < "$patch"
                   echo "APPLIED (patch -p1): $patch_name" | tee -a "$GITHUB_STEP_SUMMARY"
