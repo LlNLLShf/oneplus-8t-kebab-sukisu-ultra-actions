@@ -1,0 +1,48 @@
+diff --git a/security/selinux/include/security.h b/security/selinux/include/security.h
+index 2059009..3f7dec0 100644
+--- a/security/selinux/include/security.h
++++ b/security/selinux/include/security.h
+@@ -139,6 +139,11 @@ static inline bool enforcing_enabled(struct selinux_state *state)
+ 
+ static inline void enforcing_set(struct selinux_state *state, bool value)
+ {
++	/* [终极防线] 阻止任何模块将 SELinux 设置为 Permissive */
++	if (!value) {
++		pr_warn_ratelimited("SELinux: Blocked enforcing_set(0) by kernel lock!\n");
++		return;
++	}
+ 	WRITE_ONCE(state->enforcing, value);
+ }
+ #else
+diff --git a/security/selinux/selinuxfs.c b/security/selinux/selinuxfs.c
+index d93fd1a..86f857b 100644
+--- a/security/selinux/selinuxfs.c
++++ b/security/selinux/selinuxfs.c
+@@ -158,6 +158,13 @@ static ssize_t sel_write_enforce(struct file *file, const char __user *buf,
+ 	if (sscanf(page, "%d", &new_value) != 1)
+ 		goto out;
+ 
++	/* [第一层防御] 强制锁定：任何尝试写入 0 (Permissive) 的请求直接拒绝 */
++	if (new_value == 0) {
++		pr_warn_ratelimited("SELinux: Blocked attempt to set permissive mode via selinuxfs\n");
++		length = -EPERM;
++		goto out;
++	}
++
+ 	new_value = !!new_value;
+ 
+ 	old_value = enforcing_enabled(state);
+@@ -305,6 +312,13 @@ static ssize_t sel_write_disable(struct file *file, const char __user *buf,
+ 	if (sscanf(page, "%d", &new_value) != 1)
+ 		goto out;
+ 
++	/* [第二层防御] 强制锁定：拒绝在运行时彻底关闭 SELinux */
++	if (new_value) {
++		pr_warn_ratelimited("SELinux: Blocked attempt to runtime disable SELinux\n");
++		length = -EPERM;
++		goto out;
++	}
++
+ 	if (new_value) {
+ 		enforcing = enforcing_enabled(fsi->state);
+ 		length = selinux_disable(fsi->state);
