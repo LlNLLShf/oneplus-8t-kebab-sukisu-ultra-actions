@@ -8,7 +8,7 @@ index 2059009..3f7dec0 100644
  {
 +	/* [终极防线] 阻止任何模块将 SELinux 设置为 Permissive */
 +	if (!value) {
-+		pr_warn_ratelimited("SELinux: Blocked enforcing_set(0) by kernel lock!\n");
++		//pr_warn_ratelimited("SELinux: Blocked enforcing_set(0) by kernel lock!\n");
 +		return;
 +	}
  	WRITE_ONCE(state->enforcing, value);
@@ -24,7 +24,7 @@ index d93fd1a..86f857b 100644
  
 +	/* [第一层防御] 强制锁定：任何尝试写入 0 (Permissive) 的请求直接拒绝 */
 +	if (new_value == 0) {
-+		pr_warn_ratelimited("SELinux: Blocked attempt to set permissive mode via selinuxfs\n");
++		//pr_warn_ratelimited("SELinux: Blocked attempt to set permissive mode via selinuxfs\n");
 +		length = -EPERM;
 +		goto out;
 +	}
