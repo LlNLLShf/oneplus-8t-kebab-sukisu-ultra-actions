@@ -171,7 +171,7 @@ index 31b2de8..e51db8a 100644
 +        pr_info("selinux_hide is not enabled - drop Linux 4.19 SELinux backup\n");
 +        ksu_destroy_selinux_ss(backup_selinux_ss);
 +        backup_selinux_ss = NULL;
-+        fake_state.ss = NULL;
++        fake_state = selinux_state;
 +        WRITE_ONCE(ksu_selinux_hide_backup_was_dropped, true);
 +#else
          pr_info("selinux_hide is not enabled - drop backup_sepolicy\n");
