@@ -7,7 +7,7 @@ index a18707b..00ad390 100644
      ksu_observer_init();
      // sanity check, this may influence the performance
      stop_input_hook();
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0) || 1
      ksu_selinux_hide_handle_post_fs_data();
 +#endif
  }
@@ -17,7 +17,7 @@ index a18707b..00ad390 100644
              char buf[16];
              if (check_argv(*argv, 1, "second_stage", buf, sizeof(buf))) {
                  pr_info("/system/bin/init second_stage executed\n");
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0) || 1
                  ksu_selinux_hide_handle_second_stage();
 +#endif
                  apply_kernelsu_rules();
@@ -27,7 +27,7 @@ index a18707b..00ad390 100644
          char buf[16];
          if (!init_second_stage_executed && check_argv(*argv, 1, "second_stage", buf, sizeof(buf))) {
              pr_info("/system/bin/init second_stage executed\n");
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0) || 1
              ksu_selinux_hide_handle_second_stage();
 +#endif
              apply_kernelsu_rules();
