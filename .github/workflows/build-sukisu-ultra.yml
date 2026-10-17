@@ -825,13 +825,14 @@ jobs:
           # 应用到两个 worktree
           for tree in kernel_baseline kernel_experiment; do
             echo "Applying to $tree..."
-            # 先检查，如果冲突会直接报错，方便排查
-            if ! git -C "$tree" apply --ignore-whitespace --whitespace=nowarn "$LOCK_SELINUX_PATCH"; then
+            
+            # 使用 patch 命令，允许最多 3 行的模糊匹配，并兼容行号偏移
+            cd "$tree"
+            if ! patch -p1 -N --fuzz=3 < "$LOCK_SELINUX_PATCH"; then
               echo "::error::Patch failed to apply cleanly to $tree. It may conflict with SukiSU or SELinux hide patches."
               exit 1
             fi
-            git -C "$tree" apply --ignore-whitespace --whitespace=nowarn "$LOCK_SELINUX_PATCH"
-            git -C "$tree" diff --check
+            cd ..
           done
 
       - name: Audit Linux 4.19 SELinux hide backport
