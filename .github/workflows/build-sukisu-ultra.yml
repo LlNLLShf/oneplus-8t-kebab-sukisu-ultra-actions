@@ -1008,6 +1008,8 @@ jobs:
           enable_droidspaces_configs() {
             local config="$1"
             echo "Enabling Droidspaces / LXC container dependencies..."
+
+            scripts/config --file "$config" -e KSU_SELINUX_HIDE_4_19
             # Cgroups & Namespaces
             scripts/config --file "$config" -e CGROUPS
             scripts/config --file "$config" -e MEMCG
