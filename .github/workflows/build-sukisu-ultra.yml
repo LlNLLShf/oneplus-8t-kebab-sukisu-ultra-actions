@@ -36,6 +36,10 @@ on:
         required: false
         type: boolean
         default: false
+      lock-selinux:
+        required: false
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       enable_susfs:
@@ -81,6 +85,11 @@ on:
         required: true
         type: boolean
         default: false
+      lock-selinux:
+        description: "Lock selinux to the enforcing mode, and ensure that nobody can change selinux mode"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -99,6 +108,7 @@ env:
   BASE_KERNEL_COMMIT: ${{ inputs.base_kernel_commit || '' }}
   KERNEL_SOURCE_MODE: ${{ inputs.kernel_source || 'approved-pin' }}
   ENABLE_NETHUNTER: ${{ github.event_name == 'push' || inputs.enable_nethunter }}
+  LOCK_SELINUX: ${{ github.event_name == 'push' || inputs.lock-selinux }}
 
 jobs:
   audit-build:
@@ -777,6 +787,52 @@ jobs:
             sha256sum "$NET_HUNTER_PATCH_DIR"/*.patch
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Apply Lock Selinux kernel patches (optional)
+        if: ${{ env.LOCK_SELINUX == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          LOCK_SELINUX_PATCH="$GITHUB_WORKSPACE/patches/lock-selinux/lock-selinux.patch"
+          test -s "$LOCK_SELINUX_PATCH"
+          sha256sum "$LOCK_SELINUX_PATCH" | tee audit/lock-selinux.patch.sha256
+
+          # 从补丁里提取受影响的文件列表（唯一真实来源）
+          git apply --numstat "$LOCK_SELINUX_PATCH" |
+            awk -F '\t' '{print $3}' |
+            LC_ALL=C sort -u \
+            > "$RUNNER_TEMP/lock-selinux-files.from-patch"
+
+          if [ ! -s "$RUNNER_TEMP/lock-selinux-files.from-patch" ]; then
+            echo "::error::Apply Lock selinux patch touches no files."
+            exit 1
+          fi
+
+          # 拒绝危险路径：绝对路径、..、反斜杠
+          if grep -Eq '(^/|(^|/)\.\.(/|$)|\\)' "$RUNNER_TEMP/lock-selinux-files.from-patch"; then
+            echo "::error::Unsafe path found in selinux patch:"
+            grep -En '(^/|(^|/)\.\.(/|$)|\\)' "$RUNNER_TEMP/lock-selinux-files.from-patch"
+            exit 1
+          fi
+
+          echo "selinux patch affects files:"
+          cat "$RUNNER_TEMP/lock-selinux-files.from-patch"
+
+          # 保留审计用的文件列表
+          cp "$RUNNER_TEMP/lock-selinux-files.from-patch" audit/lock-selinux-files.expected
+
+          # 应用到两个 worktree
+          for tree in kernel_baseline kernel_experiment; do
+            echo "Applying to $tree..."
+            # 先检查，如果冲突会直接报错，方便排查
+            if ! git -C "$tree" apply --check --whitespace=error-all "$LOCK_SELINUX_PATCH"; then
+              echo "::error::Patch failed to apply cleanly to $tree. It may conflict with SukiSU or SELinux hide patches."
+              exit 1
+            fi
+            git -C "$tree" apply --whitespace=error-all "$LOCK_SELINUX_PATCH"
+            git -C "$tree" diff --check
+          done
 
       - name: Audit Linux 4.19 SELinux hide backport
         if: ${{ env.ENABLE_SELINUX_HIDE == 'true' }}
