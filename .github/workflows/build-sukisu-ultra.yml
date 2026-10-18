@@ -2199,6 +2199,9 @@ jobs:
           if test "$ENABLE_SELINUX_HIDE" = "true"; then
             expected_files="$expected_files $RUNNER_TEMP/selinux-hide-kernel-files.expected"
           fi
+          if test "$LOCK_SELINUX" = "true"; then
+            expected_files="$expected_files $RUNNER_TEMP/lock-selinux-files.from-patch"
+          fi
           cat $expected_files |
             LC_ALL=C sort -u > "$RUNNER_TEMP/experiment-files.after"
           diff -u "$RUNNER_TEMP/experiment-files.after" \
