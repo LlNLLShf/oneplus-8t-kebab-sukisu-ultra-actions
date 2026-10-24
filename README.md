@@ -18,7 +18,7 @@
     [`patches/ACA_mode_support/0001-Add-ACA-mode-support-for-OnePlus-8T.patch`](patches/ACA_mode_support/0001-Add-ACA-mode-support-for-OnePlus-8T.patch)
 
 ### 3. Kali NetHunter 补丁
-集成了部分 Kali NetHunter 的内核补丁（如 WiFi 注入等），并在构建工作流中增加了开关以支持 NetHunter 相关的内核特性。
+集成了部分 Kali NetHunter 的内核补丁，并在构建工作流中增加了开关以支持 NetHunter 相关的内核特性。
 
 ---
 *免责声明：刷机有风险，使用本仓库构建的内核造成的任何设备损坏，由使用者自行承担。*
